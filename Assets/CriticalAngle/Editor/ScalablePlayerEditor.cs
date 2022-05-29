@@ -134,7 +134,7 @@ namespace CriticalAngle.Editor
                         paramNames[i] = player.Parameters[i].Name;
                     
                     element.FindPropertyRelative("Name").intValue = EditorGUI.Popup(
-                        new Rect(rect.x, rect.y + 2, rect.width - 150, EditorGUIUtility.singleLineHeight),
+                        new Rect(rect.x, rect.y + 2, rect.width - 100, EditorGUIUtility.singleLineHeight),
                         "Parameter", element.FindPropertyRelative("Name").intValue, paramNames);
                     
                     EditorGUI.PropertyField(

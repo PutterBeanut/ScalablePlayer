@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
+using System.Security.Authentication.ExtendedProtection;
+using UnityEditor.TextCore.Text;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.InputSystem;
@@ -37,12 +40,16 @@ namespace CriticalAngle
         protected bool crouchInput;
         protected bool runInput;
         
+        private List<PlayerState> playerStates = new();
+        protected int activeState;
+        
         protected bool isCrouched;
         protected bool isTransitioningCrouched;
-        
-        protected float xRotation;
 
-        protected int activeState;
+        protected float xRotation;
+        protected decimal snapAmount;
+        protected Vector3 groundNormal;
+        protected bool touchingObject;
 
         #endregion
         
@@ -98,55 +105,70 @@ namespace CriticalAngle
                 this.References.CharacterController.hideFlags = HideFlags.HideInInspector;
         }
 
-
 #endif
         #endregion
 
         #region Default Functions
 
-        protected void OnEnable()
+        protected virtual void OnEnable()
         {
         }
 
         protected virtual void Awake()
         {
             this.ValidateComponents();
-            DisableCursor();
             this.InitializeInputs();
+            this.InitializeStates();
+            DisableCursor();
         }
 
-        protected void Start()
+        protected virtual void Start()
         {
         }
 
         protected virtual void Update()
         {
+            this.playerStates[this.activeState].Update();
+
             this.CheckGrounded();
-            
+
             if (this.IsGrounded)
             {
                 this.CalculateFriction();
                 this.LimitVelocity();
             }
-            
-            this.UpdateStateParameter("Is Moving", this.directionalInput.sqrMagnitude > 0.0f);
+
+            this.UpdateStateParameters();
+
+            this.SnapToGround();
 
             this.References.CharacterController.Move(
-                new Vector3(this.Velocity.x, 0.0f, this.Velocity.z) * Time.deltaTime);
+                new Vector3(0.0f, (float) this.snapAmount) +
+                new Vector3(this.Velocity.x, 0.0f, this.Velocity.z) *
+                                                     Time.deltaTime);
             this.UseGravity();
         }
 
         protected virtual void LateUpdate()
         {
+            this.playerStates[this.activeState].LateUpdate();
             this.HandleRotation();
         }
 
         protected virtual void FixedUpdate()
         {
+            this.playerStates[this.activeState].FixedUpdate();
+        }
+
+        private void OnControllerColliderHit(ControllerColliderHit hit)
+        {
+            this.groundNormal = hit.normal;
+            this.touchingObject = true;
         }
 
         protected virtual void OnDestroy()
         {
+            this.playerStates[this.activeState].OnDestroy();
             this.InputSettings.Actions.Disable();
         }
 
@@ -227,7 +249,29 @@ namespace CriticalAngle
             mapping[this.InputSettings.RunAction].performed += this.OnRunInput;
             mapping[this.InputSettings.RunAction].canceled += this.OnRunInput;
         }
-        
+
+        private void InitializeStates()
+        {
+            var tempPlayerStates = new List<PlayerState>();
+            foreach (Type type in Assembly.GetAssembly(typeof(PlayerState)).GetTypes().Where(playerState =>
+                         playerState.IsClass && !playerState.IsAbstract &&
+                         playerState.IsSubclassOf(typeof(PlayerState))))
+                tempPlayerStates.Add((PlayerState)Activator.CreateInstance(type, new object[] { this }));
+
+            var names = tempPlayerStates.Select(state => state.GetStateName()).ToArray();
+            for (var i = 0; i < this.States.Count; i++)
+            {
+                var index = Array.FindIndex(names, s => s == this.States[i].Name);
+
+                if (index >= 0)
+                    this.playerStates.Add(tempPlayerStates[i]);
+                else
+                    this.Error("Cannot find a PlayerState class that returns the State name, `" +
+                               this.States[i].Name +
+                               ".` Make sure that you have a class definition that returns the correct name in its `GetStateName()` function.");
+            }
+        }
+
         private static void EnableCursor()
         {
             Cursor.visible = true;
@@ -244,23 +288,23 @@ namespace CriticalAngle
 
         #region State Management
 
-        protected void UpdateStateParameter(string name, bool value)
+        protected void UpdateStateParameter(string parameterName, bool value)
         {
-            this.Parameters[this.FindStateParameter(name)].Value = value;
+            this.Parameters[this.FindStateParameter(parameterName)].Value = value;
             this.CheckStateConditions();
         }
 
-        private int FindStateParameter(string name)
+        private int FindStateParameter(string parameterName)
         {
             var param = -1;
             for (var i = 0; i < this.Parameters.Count; i++)
             {
-                if (this.Parameters[i].Name == name)
+                if (this.Parameters[i].Name == parameterName)
                     param = i;
             }
 
             if (param == -1)
-                this.Error("Cannot find a parameter with the name `" + name + "`");
+                this.Error("Cannot find a parameter with the name `" + parameterName + ".`");
             return param;
         }
 
@@ -284,12 +328,22 @@ namespace CriticalAngle
             }
         }
 
+        private void UpdateStateParameters()
+        {
+            this.UpdateStateParameter("Is Grounded", this.IsGrounded);
+            this.UpdateStateParameter("Is Moving", this.directionalInput.sqrMagnitude > 0.0f);
+            this.UpdateStateParameter("Run Input", this.runInput);
+            this.UpdateStateParameter("Jump Input", this.jumpInput);
+            this.UpdateStateParameter("Can Jump", this.IsGrounded && this.Velocity.y <= 0.0f);
+        }
+
         private void SetState(int stateIndex)
         {
-            print("New state: " + this.States[stateIndex].Name);
+            this.playerStates[this.activeState].OnStateExit();
             this.activeState = stateIndex;
+            this.playerStates[this.activeState].OnStateEnter();
         }
-        
+
         #endregion
         
         #region Character
@@ -299,18 +353,21 @@ namespace CriticalAngle
             return new Vector3(input.x, 0.0f, input.y);
         }
 
-        protected virtual Vector3 WorldToLocalSpace(Vector3 input)
+        protected virtual Vector3 GlobalToLocalSpace(Vector3 input)
         {
             return this.transform.TransformDirection(input);
         }
         
         protected virtual void UseGravity()
         {
-            if (this.IsGrounded && this.Velocity.y < 0.0f)
-                this.Velocity.y = -2.0f;
+            var gravity = new Vector3(0.0f, Physics.gravity.y * Time.deltaTime);
+            if (!this.IsGrounded && this.touchingObject)
+                gravity = Vector3.ProjectOnPlane(gravity, this.groundNormal);
+
+            this.touchingObject = false;
             
-            this.Velocity += new Vector3(0.0f, Physics.gravity.y * Time.deltaTime);
-            this.References.CharacterController.Move(Vector3.up * (this.Velocity.y * Time.deltaTime));
+            this.Velocity += gravity;
+            this.References.CharacterController.Move(new Vector3(0.0f, this.Velocity.y * Time.deltaTime));
         }
 
         protected virtual void LimitVelocity()
@@ -350,20 +407,28 @@ namespace CriticalAngle
 
         protected virtual void CheckGrounded()
         {
+            if (this.touchingObject && Vector3.Angle(this.groundNormal, Vector3.up) > this.GeneralSettings.SlopeLimit)
+            {
+                this.IsGrounded = false;
+                return;
+            }
+            
             var pos = this.transform.position + this.References.CharacterController.center;
             var pos2 = this.References.CharacterController.height / 4.0f;
-            var radius = Mathf.Lerp(0.0f, this.GeneralSettings.Radius,
-                this.GeneralSettings.SlopeLimit / 90.0f);
 
             // ReSharper disable once Unity.PreferNonAllocApi
-            var colliders = Physics.OverlapCapsule(pos, pos - new Vector3(0.0f, pos2 + 0.1f, 0.0f),
+            var colliders = Physics.OverlapCapsule(pos,
+                pos - new Vector3(0.0f, pos2 + this.References.CharacterController.skinWidth + 0.1f, 0.0f),
                 this.GeneralSettings.Radius, this.GeneralSettings.GroundMask);
 
-            this.IsGrounded = colliders.Length > 0;
+            this.IsGrounded = colliders.Length > 0 && this.Velocity.y <= 0.0f;
         }
         
-        protected virtual void Accelerate(Vector3 direction, float magnitude, float speed, float accel)
+        protected virtual void AirAccelerate(float speed, float accel)
         {
+            var direction = this.GlobalToLocalSpace(this.InputVectorToDirection(this.directionalInput.normalized));
+            var magnitude = this.Velocity.magnitude;
+
             var wishSpeed = magnitude;
 
             // Cap speed
@@ -388,6 +453,42 @@ namespace CriticalAngle
                 accelerationSpeed = addSpeed;
 
             this.Velocity += accelerationSpeed * direction;
+        }
+
+        protected virtual void GroundAccelerate(float speed, float accel)
+        {
+            var direction = this.GlobalToLocalSpace(this.InputVectorToDirection(this.directionalInput.normalized));
+            
+            var targetVelocity = direction * speed;
+            var velocityChange = targetVelocity - this.Velocity;
+            var acceleration = velocityChange / Time.deltaTime;
+
+            acceleration = Vector3.ClampMagnitude(acceleration, accel);
+            acceleration.y = 0.0f;
+            
+            this.Velocity += acceleration;
+        }
+        
+        protected virtual void SnapToGround()
+        {
+            if (!this.IsGrounded)
+            {
+                this.snapAmount = 0.0m;
+                return;
+            }
+            
+            var center = this.transform.position + this.References.CharacterController.center;
+
+            if (Physics.SphereCast(center, this.GeneralSettings.Radius, Vector3.down, out var hit,
+                    this.References.CharacterController.height / 2.0f + this.GeneralSettings.StepOffset,
+                    this.GeneralSettings.GroundMask))
+            {
+                var skin = new Vector3(0.0f, 0.5f + this.References.CharacterController.skinWidth);
+                var calculatedCenter = hit.point + hit.normal * this.GeneralSettings.Radius + skin;
+
+                this.snapAmount = (decimal)calculatedCenter.y - (decimal)this.transform.position.y;
+                this.snapAmount = Math.Min(this.snapAmount, 0.0m);
+            }
         }
 
         #endregion
@@ -435,6 +536,44 @@ namespace CriticalAngle
 
         #endregion
 
+        #region States
+
+        protected abstract class PlayerState
+        {
+            protected ScalablePlayer Player;
+            
+            protected PlayerState(ScalablePlayer player) =>
+                this.Player = player;
+
+            public abstract string GetStateName();
+
+            public virtual void OnStateEnter()
+            {
+            }
+
+            public virtual void Update()
+            {
+            }
+
+            public virtual void FixedUpdate()
+            {
+            }
+
+            public virtual void LateUpdate()
+            {
+            }
+
+            public virtual void OnDestroy()
+            {
+            }
+            
+            public virtual void OnStateExit()
+            {
+            }
+        }
+
+        #endregion
+        
         #region Settings
 
         /// <summary>
@@ -592,7 +731,7 @@ namespace CriticalAngle
 
             [Space]
             
-            [Tooltip("By default, the player will only detect collisions in the direction it is going towards. Enabling this boolean will allow for the player to check for collisions in all directions.")]
+            [Tooltip("By default, the player will only detect collisions in the direction it is going towards. Enabling this boolean will allow for the player to check for collisions in all directions at the expense of the CPU.")]
             public bool UseAccurateCollisions;
 
             public PlayerPhysicsSettings()
@@ -640,7 +779,7 @@ namespace CriticalAngle
             
             [Tooltip("The speed that we desire the player to travel.")]
             public float MaxSpeed;
-            [Tooltip("How fast we should accelerate to the desired speed.")]
+            [Tooltip("How fast we should accelerate to the desired speed.")] [Range(0.0f, 1.0f)]
             public float Acceleration;
 
             public MovementParameters(bool enabled, float maxSpeed, float acceleration)
