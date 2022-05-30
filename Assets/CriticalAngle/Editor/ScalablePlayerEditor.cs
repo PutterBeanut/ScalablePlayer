@@ -98,6 +98,7 @@ namespace CriticalAngle.Editor
                         "Next State", element.FindPropertyRelative("ToState").intValue, stateNames);
                 },
                 onSelectCallback = this.OnTransitionSelected,
+                // ReSharper disable once VariableHidesOuterVariable
                 onRemoveCallback = list =>
                 {
                     this.stateConditionsList = null;

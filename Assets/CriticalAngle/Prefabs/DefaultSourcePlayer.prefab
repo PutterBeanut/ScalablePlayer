@@ -241,7 +241,7 @@ MonoBehaviour:
     Walking:
       Enabled: 1
       MaxSpeed: 10
-      Acceleration: 0.2
+      Acceleration: 0.5
     Running:
       Enabled: 1
       MaxSpeed: 20
@@ -261,7 +261,7 @@ MonoBehaviour:
     ToggleCrouch: 0
     CanJump: 1
     JumpForce: 4
-    CanAirStrafe: 1
+    AirMovementType: 2
     CanCrouchWhileFalling: 1
     MaxAirAcceleration: 1
     AirAcceleration: 10
@@ -379,6 +379,6 @@ CharacterController:
   m_Radius: 0.5
   m_SlopeLimit: 40
   m_StepOffset: 0.3
-  m_SkinWidth: 0.08
+  m_SkinWidth: 0.001
   m_MinMoveDistance: 0.001
   m_Center: {x: 0, y: 0, z: 0}

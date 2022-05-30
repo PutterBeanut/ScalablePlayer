@@ -2,10 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.Security.Authentication.ExtendedProtection;
-using UnityEditor.TextCore.Text;
 using UnityEngine;
-using UnityEngine.Events;
 using UnityEngine.InputSystem;
 
 namespace CriticalAngle
@@ -13,7 +10,7 @@ namespace CriticalAngle
     public partial class ScalablePlayer : MonoBehaviour
     {
         #region Inspector Fields
-        
+
         [SerializeField] protected PlayerReferences References;
         [SerializeField] protected PlayerGeneralSettings GeneralSettings;
         [SerializeField] protected PlayerMovementSettings MovementSettings;
@@ -24,7 +21,7 @@ namespace CriticalAngle
 
         #region Public Fields
 
-        public Vector3 Velocity;
+        [HideInInspector] public Vector3 Velocity;
         [HideInInspector] public bool IsGrounded;
         
         [HideInInspector] public List<StateParameter> Parameters = new();
@@ -40,7 +37,7 @@ namespace CriticalAngle
         protected bool crouchInput;
         protected bool runInput;
         
-        private List<PlayerState> playerStates = new();
+        private readonly List<PlayerState> playerStates = new();
         protected int activeState;
         
         protected bool isCrouched;
@@ -89,6 +86,7 @@ namespace CriticalAngle
                 this.References.CharacterController.radius = this.GeneralSettings.Radius;
                 this.References.CharacterController.slopeLimit = this.GeneralSettings.SlopeLimit;
                 this.References.CharacterController.stepOffset = this.GeneralSettings.StepOffset;
+                this.References.CharacterController.skinWidth = 0.001f;
 
                 if (this.GeneralSettings.StepOffset > this.References.CharacterController.height)
                     this.GeneralSettings.StepOffset = this.References.CharacterController.height;
@@ -160,6 +158,10 @@ namespace CriticalAngle
         private void OnControllerColliderHit(ControllerColliderHit hit)
         {
             this.groundNormal = hit.normal;
+
+            if ((this.References.CharacterController.collisionFlags & CollisionFlags.Sides) != 0
+                || (this.References.CharacterController.isGrounded && !this.IsGrounded))
+                this.Velocity -= this.groundNormal * Vector3.Dot(this.Velocity, this.groundNormal);
         }
 
         protected virtual void OnDestroy()
@@ -452,6 +454,13 @@ namespace CriticalAngle
             this.Velocity += addVelocity;
         }
 
+        protected virtual void NormalAirAccelerate(float speed, float accel)
+        {
+            var direction = this.GlobalToLocalSpace(this.InputVectorToDirection(this.directionalInput.normalized));
+            var targetVelocity = Vector3.ClampMagnitude(direction * accel, speed);
+            this.Velocity += targetVelocity;
+        }
+
         protected virtual void GroundAccelerate(float speed, float accel)
         {
             var direction = this.GlobalToLocalSpace(this.InputVectorToDirection(this.directionalInput.normalized));
@@ -537,7 +546,7 @@ namespace CriticalAngle
 
         protected abstract class PlayerState
         {
-            protected ScalablePlayer Player;
+            protected readonly ScalablePlayer Player;
             
             protected PlayerState(ScalablePlayer player) =>
                 this.Player = player;
@@ -638,6 +647,25 @@ namespace CriticalAngle
         [Serializable]
         public class PlayerMovementSettings
         {
+            /// <summary>
+            /// The type of movement we should perform while in air.
+            /// </summary>
+            public enum AirStrafe
+            {
+                /// <summary>
+                /// We cannot control our velocity in air.
+                /// </summary>
+                None,
+                /// <summary>
+                /// Allows the player to freely travel while in air.
+                /// </summary>
+                Normal,
+                /// <summary>
+                /// Uses the Source Engine movement to travel in air.
+                /// </summary>
+                Acceleration
+            }
+            
             [Header("Movement Parameters")]
             
             [Tooltip("Settings for when the player is in the Walk state.")]
@@ -684,13 +712,13 @@ namespace CriticalAngle
             [Space] [Header("Falling")]
 
             [Tooltip("Are we allowed to strafe in air? This will override the `AirControl` property with air strafing code.")]
-            public bool CanAirStrafe;
+            public AirStrafe AirMovementType;
             [Tooltip("Should we be able to crouch in air? This will cause the the feet to be raised as opposed to the head being lowered.")]
             public bool CanCrouchWhileFalling;
             
             [Space]
             
-            [Tooltip("What is the maximum speed we should be able to travel while air strafing? Ignored if `CanAirStrafe` is disabled.")]
+            [Tooltip("What is the maximum speed we should be able to travel while air strafing?")]
             public float MaxAirAcceleration;
             [Tooltip("The multiplier for how fast we should travel while air strafing.")]
             public float AirAcceleration;
@@ -710,7 +738,7 @@ namespace CriticalAngle
                 this.CanJumpWhileTransitioningCrouch = true;
                 this.CanJump = true;
                 this.JumpForce = 4.0f;
-                this.CanAirStrafe = true;
+                this.AirMovementType = AirStrafe.Acceleration;
                 this.CanCrouchWhileFalling = true;
                 this.MaxAirAcceleration = 1.0f;
                 this.AirAcceleration = 10.0f;
@@ -774,7 +802,7 @@ namespace CriticalAngle
             
             [Space]
             
-            [Tooltip("The speed that we desire the player to travel.")]
+            [Tooltip("The max speed that we desire the player to travel.")]
             public float MaxSpeed;
             [Tooltip("How fast we should accelerate to the desired speed.")] [Range(0.0f, 1.0f)]
             public float Acceleration;

@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using System;
+using UnityEngine;
 
 namespace CriticalAngle
 {
@@ -82,8 +83,17 @@ namespace CriticalAngle
 
             public override void Update()
             {
-                this.Player.AirAccelerate(this.Player.MovementSettings.MaxAirAcceleration,
-                    this.Player.MovementSettings.AirAcceleration);
+                switch (this.Player.MovementSettings.AirMovementType)
+                {
+                    case PlayerMovementSettings.AirStrafe.Normal:
+                        this.Player.NormalAirAccelerate(this.Player.MovementSettings.MaxAirAcceleration,
+                            this.Player.MovementSettings.AirAcceleration);
+                        break;
+                    case PlayerMovementSettings.AirStrafe.Acceleration:
+                        this.Player.AirAccelerate(this.Player.MovementSettings.MaxAirAcceleration,
+                            this.Player.MovementSettings.AirAcceleration);
+                        break;
+                }
             }
         }
     }
