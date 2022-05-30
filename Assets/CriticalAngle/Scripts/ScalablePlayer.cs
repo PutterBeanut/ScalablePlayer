@@ -24,7 +24,7 @@ namespace CriticalAngle
 
         #region Public Fields
 
-        [HideInInspector] public Vector3 Velocity;
+        public Vector3 Velocity;
         [HideInInspector] public bool IsGrounded;
         
         [HideInInspector] public List<StateParameter> Parameters = new();
@@ -49,7 +49,6 @@ namespace CriticalAngle
         protected float xRotation;
         protected decimal snapAmount;
         protected Vector3 groundNormal;
-        protected bool touchingObject;
 
         #endregion
         
@@ -139,14 +138,12 @@ namespace CriticalAngle
             }
 
             this.UpdateStateParameters();
-
             this.SnapToGround();
-
-            this.References.CharacterController.Move(
-                new Vector3(0.0f, (float) this.snapAmount) +
-                new Vector3(this.Velocity.x, 0.0f, this.Velocity.z) *
-                                                     Time.deltaTime);
             this.UseGravity();
+            
+            this.References.CharacterController.Move(new Vector3(0.0f, (float)this.snapAmount) +
+                                                     this.Velocity * Time.deltaTime);
+
         }
 
         protected virtual void LateUpdate()
@@ -163,7 +160,6 @@ namespace CriticalAngle
         private void OnControllerColliderHit(ControllerColliderHit hit)
         {
             this.groundNormal = hit.normal;
-            this.touchingObject = true;
         }
 
         protected virtual void OnDestroy()
@@ -290,6 +286,8 @@ namespace CriticalAngle
 
         protected void UpdateStateParameter(string parameterName, bool value)
         {
+            if (this.Parameters[this.FindStateParameter(parameterName)].Value == value) return;
+            
             this.Parameters[this.FindStateParameter(parameterName)].Value = value;
             this.CheckStateConditions();
         }
@@ -339,6 +337,7 @@ namespace CriticalAngle
 
         private void SetState(int stateIndex)
         {
+            print(this.States[stateIndex].Name);
             this.playerStates[this.activeState].OnStateExit();
             this.activeState = stateIndex;
             this.playerStates[this.activeState].OnStateEnter();
@@ -357,17 +356,10 @@ namespace CriticalAngle
         {
             return this.transform.TransformDirection(input);
         }
-        
+
         protected virtual void UseGravity()
         {
-            var gravity = new Vector3(0.0f, Physics.gravity.y * Time.deltaTime);
-            if (!this.IsGrounded && this.touchingObject)
-                gravity = Vector3.ProjectOnPlane(gravity, this.groundNormal);
-
-            this.touchingObject = false;
-            
-            this.Velocity += gravity;
-            this.References.CharacterController.Move(new Vector3(0.0f, this.Velocity.y * Time.deltaTime));
+            this.Velocity += new Vector3(0.0f, Physics.gravity.y * Time.deltaTime);
         }
 
         protected virtual void LimitVelocity()
@@ -407,7 +399,8 @@ namespace CriticalAngle
 
         protected virtual void CheckGrounded()
         {
-            if (this.touchingObject && Vector3.Angle(this.groundNormal, Vector3.up) > this.GeneralSettings.SlopeLimit)
+            if (this.References.CharacterController.isGrounded
+                && Vector3.Angle(this.groundNormal, Vector3.up) > this.GeneralSettings.SlopeLimit)
             {
                 this.IsGrounded = false;
                 return;
@@ -452,7 +445,11 @@ namespace CriticalAngle
             if (accelerationSpeed > addSpeed)
                 accelerationSpeed = addSpeed;
 
-            this.Velocity += accelerationSpeed * direction;
+            var addVelocity = accelerationSpeed * direction;
+            if (this.References.CharacterController.isGrounded)
+                addVelocity = Vector3.ProjectOnPlane(addVelocity, this.groundNormal);
+
+            this.Velocity += addVelocity;
         }
 
         protected virtual void GroundAccelerate(float speed, float accel)
