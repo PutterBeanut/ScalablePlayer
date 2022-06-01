@@ -37,9 +37,9 @@ namespace CriticalAngle
         protected bool crouchInput;
         protected bool runInput;
         
-        private readonly List<PlayerState> playerStates = new();
+        protected readonly List<PlayerState> playerStates = new();
         protected int activeState;
-        
+
         protected bool isCrouched;
         protected bool isTransitioningCrouched;
 
@@ -84,7 +84,7 @@ namespace CriticalAngle
             {
                 this.References.CharacterController.height = this.MovementSettings.StandingColliderHeight;
                 this.References.CharacterController.radius = this.GeneralSettings.Radius;
-                this.References.CharacterController.slopeLimit = this.GeneralSettings.SlopeLimit;
+                this.References.CharacterController.slopeLimit = 89.9f;
                 this.References.CharacterController.stepOffset = this.GeneralSettings.StepOffset;
                 this.References.CharacterController.skinWidth = 0.001f;
 
@@ -138,15 +138,15 @@ namespace CriticalAngle
             this.UpdateStateParameters();
             this.SnapToGround();
             this.UseGravity();
-            
+
             this.References.CharacterController.Move(new Vector3(0.0f, (float)this.snapAmount) +
                                                      this.Velocity * Time.deltaTime);
-
         }
 
         protected virtual void LateUpdate()
         {
             this.playerStates[this.activeState].LateUpdate();
+
             this.HandleRotation();
         }
 
@@ -157,16 +157,21 @@ namespace CriticalAngle
 
         private void OnControllerColliderHit(ControllerColliderHit hit)
         {
-            this.groundNormal = hit.normal;
-
             if ((this.References.CharacterController.collisionFlags & CollisionFlags.Sides) != 0
                 || (this.References.CharacterController.isGrounded && !this.IsGrounded))
-                this.Velocity -= this.groundNormal * Vector3.Dot(this.Velocity, this.groundNormal);
+                this.Velocity -= hit.normal * Vector3.Dot(this.Velocity, hit.normal);
+
+            if ((this.References.CharacterController.collisionFlags & CollisionFlags.Sides) == 0)
+            {
+                if (Physics.Raycast(hit.point, Vector3.down, out var ray, Mathf.Infinity, this.GeneralSettings.GroundMask))
+                    this.groundNormal = ray.normal;
+            }
         }
 
         protected virtual void OnDestroy()
         {
             this.playerStates[this.activeState].OnDestroy();
+            
             this.InputSettings.Actions.Disable();
         }
 
@@ -250,12 +255,7 @@ namespace CriticalAngle
 
         private void InitializeStates()
         {
-            var tempPlayerStates = new List<PlayerState>();
-            foreach (Type type in Assembly.GetAssembly(typeof(PlayerState)).GetTypes().Where(playerState =>
-                         playerState.IsClass && !playerState.IsAbstract &&
-                         playerState.IsSubclassOf(typeof(PlayerState))))
-                tempPlayerStates.Add((PlayerState)Activator.CreateInstance(type, new object[] { this }));
-
+            var tempPlayerStates = this.GetAllOfType<PlayerState>(this);
             var names = tempPlayerStates.Select(state => state.GetStateName()).ToArray();
             for (var i = 0; i < this.States.Count; i++)
             {
@@ -268,6 +268,18 @@ namespace CriticalAngle
                                this.States[i].Name +
                                ".` Make sure that you have a class definition that returns the correct name in its `GetStateName()` function.");
             }
+        }
+
+        private T[] GetAllOfType<T>(params object[] args)
+        {
+            var results = new List<T>();
+            
+            foreach (Type type in Assembly.GetAssembly(typeof(T)).GetTypes().Where(x =>
+                         x.IsClass && !x.IsAbstract &&
+                         x.IsSubclassOf(typeof(T))))
+                results.Add((T)Activator.CreateInstance(type, args));
+
+            return results.ToArray();
         }
 
         private static void EnableCursor()
@@ -339,10 +351,43 @@ namespace CriticalAngle
 
         private void SetState(int stateIndex)
         {
-            print(this.States[stateIndex].Name);
             this.playerStates[this.activeState].OnStateExit();
             this.activeState = stateIndex;
             this.playerStates[this.activeState].OnStateEnter();
+        }
+        
+        protected abstract class PlayerState
+        {
+            protected readonly ScalablePlayer Player;
+            
+            protected PlayerState(ScalablePlayer player) =>
+                this.Player = player;
+
+            public abstract string GetStateName();
+
+            public virtual void OnStateEnter()
+            {
+            }
+
+            public virtual void Update()
+            {
+            }
+
+            public virtual void FixedUpdate()
+            {
+            }
+
+            public virtual void LateUpdate()
+            {
+            }
+
+            public virtual void OnDestroy()
+            {
+            }
+            
+            public virtual void OnStateExit()
+            {
+            }
         }
 
         #endregion
@@ -397,12 +442,12 @@ namespace CriticalAngle
                 this.GeneralSettings.MinLookAngle, this.GeneralSettings.MaxLookAngle);
             
             this.References.Camera.transform.localEulerAngles = new Vector3(this.xRotation, 0.0f);
+            
         }
 
         protected virtual void CheckGrounded()
         {
-            if (this.References.CharacterController.isGrounded
-                && Vector3.Angle(this.groundNormal, Vector3.up) > this.GeneralSettings.SlopeLimit)
+            if (Vector3.Angle(this.groundNormal, Vector3.up) > this.GeneralSettings.SlopeLimit)
             {
                 this.IsGrounded = false;
                 return;
@@ -485,7 +530,7 @@ namespace CriticalAngle
             
             var center = this.transform.position + this.References.CharacterController.center;
 
-            if (Physics.SphereCast(center, this.GeneralSettings.Radius, Vector3.down, out var hit,
+            if (Physics.SphereCast(center, this.GeneralSettings.FeetRadius, Vector3.down, out var hit,
                     this.References.CharacterController.height / 2.0f + this.GeneralSettings.StepOffset,
                     this.GeneralSettings.GroundMask))
             {
@@ -541,44 +586,6 @@ namespace CriticalAngle
         }
 
         #endregion
-
-        #region States
-
-        protected abstract class PlayerState
-        {
-            protected readonly ScalablePlayer Player;
-            
-            protected PlayerState(ScalablePlayer player) =>
-                this.Player = player;
-
-            public abstract string GetStateName();
-
-            public virtual void OnStateEnter()
-            {
-            }
-
-            public virtual void Update()
-            {
-            }
-
-            public virtual void FixedUpdate()
-            {
-            }
-
-            public virtual void LateUpdate()
-            {
-            }
-
-            public virtual void OnDestroy()
-            {
-            }
-            
-            public virtual void OnStateExit()
-            {
-            }
-        }
-
-        #endregion
         
         #region Settings
 
@@ -602,13 +609,15 @@ namespace CriticalAngle
             
             [Tooltip("The radius of our capsule collider.")] [Min(0.0f)]
             public float Radius;
+            [Tooltip("The radius how far we're allowed to stick to the ground. Should be less than or equal to our collider's radius.")] [Min(0.0f)]
+            public float FeetRadius;
             [Tooltip("The max slope angle (in degrees) that we can travel.")] [Range(1, 90)]
             public int SlopeLimit;
             [Tooltip("The maximum height of a surface that we can step up onto.")] [Min(0.0f)]
             public float StepOffset;
             [Tooltip("The amount of linear friction to be applied to the player while braking.")]
             public float Friction;
-            [Tooltip("The minimum speed at which the player should stop moving.")]
+            [Tooltip("The speed at which the player should stop moving.")]
             public float StopSpeed;
             [Tooltip("Select only the layer that the ground is on using this layer mask. This will allow the player to filter out collisions when checking for if we're grounded.")]
             public LayerMask GroundMask;
@@ -629,6 +638,7 @@ namespace CriticalAngle
             public PlayerGeneralSettings()
             {
                 this.Radius = 0.5f;
+                this.FeetRadius = 0.35f;
                 this.SlopeLimit = 45;
                 this.StepOffset = 0.3f;
                 this.Friction = 10.0f;
@@ -650,7 +660,7 @@ namespace CriticalAngle
             /// <summary>
             /// The type of movement we should perform while in air.
             /// </summary>
-            public enum AirStrafe
+            public enum AirStrafeType
             {
                 /// <summary>
                 /// We cannot control our velocity in air.
@@ -712,7 +722,7 @@ namespace CriticalAngle
             [Space] [Header("Falling")]
 
             [Tooltip("Are we allowed to strafe in air? This will override the `AirControl` property with air strafing code.")]
-            public AirStrafe AirMovementType;
+            public AirStrafeType AirStrafe;
             [Tooltip("Should we be able to crouch in air? This will cause the the feet to be raised as opposed to the head being lowered.")]
             public bool CanCrouchWhileFalling;
             
@@ -738,7 +748,7 @@ namespace CriticalAngle
                 this.CanJumpWhileTransitioningCrouch = true;
                 this.CanJump = true;
                 this.JumpForce = 4.0f;
-                this.AirMovementType = AirStrafe.Acceleration;
+                this.AirStrafe = AirStrafeType.Acceleration;
                 this.CanCrouchWhileFalling = true;
                 this.MaxAirAcceleration = 1.0f;
                 this.AirAcceleration = 10.0f;
@@ -751,18 +761,25 @@ namespace CriticalAngle
         [Serializable]
         public class PlayerPhysicsSettings
         {
+            public enum ObjectModifierType
+            {
+                Everything,
+                Nothing,
+                DynamicRigidbodies,
+                KinematicRigidbodies,
+                DynamicAndKinematicRigidbodies,
+                EverythingExceptRigidbodies,
+            }
+            
             [Tooltip("Should we be able to push and interact with other physics objects?")]
             public bool CanPushPhysicsObjects;
-
-            [Space]
-            
-            [Tooltip("By default, the player will only detect collisions in the direction it is going towards. Enabling this boolean will allow for the player to check for collisions in all directions at the expense of the CPU.")]
-            public bool UseAccurateCollisions;
+            [Tooltip("Which types of objects can modify our position? This is useful for elevators, moving platforms, etc.")]
+            public ObjectModifierType ObjectModifier;
 
             public PlayerPhysicsSettings()
             {
                 this.CanPushPhysicsObjects = true;
-                this.UseAccurateCollisions = true;
+                this.ObjectModifier = ObjectModifierType.KinematicRigidbodies;
             }
         }
         
@@ -890,7 +907,7 @@ namespace CriticalAngle
             /// </summary>
             public Values Value;
         }
-
+        
         #endregion
     }
 }
