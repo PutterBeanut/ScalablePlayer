@@ -15,7 +15,7 @@ using System.Collections.Generic;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.Utilities;
 
-namespace CriticalAngle.Input
+namespace CriticalAngle.ExpandablePlayer.Input
 {
     public partial class @DefaultInputControls : IInputActionCollection2, IDisposable
     {
@@ -30,7 +30,7 @@ namespace CriticalAngle.Input
             ""id"": ""d5ff3b12-46f8-4264-9c80-359ef125fffd"",
             ""actions"": [
                 {
-                    ""name"": ""Direction"",
+                    ""name"": ""Move"",
                     ""type"": ""Value"",
                     ""id"": ""b66acea7-a381-48be-aadf-02b6ac77b68f"",
                     ""expectedControlType"": ""Vector2"",
@@ -83,7 +83,7 @@ namespace CriticalAngle.Input
                     ""interactions"": """",
                     ""processors"": """",
                     ""groups"": """",
-                    ""action"": ""Direction"",
+                    ""action"": ""Move"",
                     ""isComposite"": true,
                     ""isPartOfComposite"": false
                 },
@@ -94,7 +94,7 @@ namespace CriticalAngle.Input
                     ""interactions"": """",
                     ""processors"": """",
                     ""groups"": """",
-                    ""action"": ""Direction"",
+                    ""action"": ""Move"",
                     ""isComposite"": false,
                     ""isPartOfComposite"": true
                 },
@@ -105,7 +105,7 @@ namespace CriticalAngle.Input
                     ""interactions"": """",
                     ""processors"": """",
                     ""groups"": """",
-                    ""action"": ""Direction"",
+                    ""action"": ""Move"",
                     ""isComposite"": false,
                     ""isPartOfComposite"": true
                 },
@@ -116,7 +116,7 @@ namespace CriticalAngle.Input
                     ""interactions"": """",
                     ""processors"": """",
                     ""groups"": """",
-                    ""action"": ""Direction"",
+                    ""action"": ""Move"",
                     ""isComposite"": false,
                     ""isPartOfComposite"": true
                 },
@@ -127,7 +127,7 @@ namespace CriticalAngle.Input
                     ""interactions"": """",
                     ""processors"": """",
                     ""groups"": """",
-                    ""action"": ""Direction"",
+                    ""action"": ""Move"",
                     ""isComposite"": false,
                     ""isPartOfComposite"": true
                 },
@@ -182,7 +182,7 @@ namespace CriticalAngle.Input
 }");
             // Player
             m_Player = asset.FindActionMap("Player", throwIfNotFound: true);
-            m_Player_Direction = m_Player.FindAction("Direction", throwIfNotFound: true);
+            m_Player_Move = m_Player.FindAction("Move", throwIfNotFound: true);
             m_Player_Look = m_Player.FindAction("Look", throwIfNotFound: true);
             m_Player_Jump = m_Player.FindAction("Jump", throwIfNotFound: true);
             m_Player_Crouch = m_Player.FindAction("Crouch", throwIfNotFound: true);
@@ -246,7 +246,7 @@ namespace CriticalAngle.Input
         // Player
         private readonly InputActionMap m_Player;
         private IPlayerActions m_PlayerActionsCallbackInterface;
-        private readonly InputAction m_Player_Direction;
+        private readonly InputAction m_Player_Move;
         private readonly InputAction m_Player_Look;
         private readonly InputAction m_Player_Jump;
         private readonly InputAction m_Player_Crouch;
@@ -255,7 +255,7 @@ namespace CriticalAngle.Input
         {
             private @DefaultInputControls m_Wrapper;
             public PlayerActions(@DefaultInputControls wrapper) { m_Wrapper = wrapper; }
-            public InputAction @Direction => m_Wrapper.m_Player_Direction;
+            public InputAction @Move => m_Wrapper.m_Player_Move;
             public InputAction @Look => m_Wrapper.m_Player_Look;
             public InputAction @Jump => m_Wrapper.m_Player_Jump;
             public InputAction @Crouch => m_Wrapper.m_Player_Crouch;
@@ -269,9 +269,9 @@ namespace CriticalAngle.Input
             {
                 if (m_Wrapper.m_PlayerActionsCallbackInterface != null)
                 {
-                    @Direction.started -= m_Wrapper.m_PlayerActionsCallbackInterface.OnDirection;
-                    @Direction.performed -= m_Wrapper.m_PlayerActionsCallbackInterface.OnDirection;
-                    @Direction.canceled -= m_Wrapper.m_PlayerActionsCallbackInterface.OnDirection;
+                    @Move.started -= m_Wrapper.m_PlayerActionsCallbackInterface.OnMove;
+                    @Move.performed -= m_Wrapper.m_PlayerActionsCallbackInterface.OnMove;
+                    @Move.canceled -= m_Wrapper.m_PlayerActionsCallbackInterface.OnMove;
                     @Look.started -= m_Wrapper.m_PlayerActionsCallbackInterface.OnLook;
                     @Look.performed -= m_Wrapper.m_PlayerActionsCallbackInterface.OnLook;
                     @Look.canceled -= m_Wrapper.m_PlayerActionsCallbackInterface.OnLook;
@@ -288,9 +288,9 @@ namespace CriticalAngle.Input
                 m_Wrapper.m_PlayerActionsCallbackInterface = instance;
                 if (instance != null)
                 {
-                    @Direction.started += instance.OnDirection;
-                    @Direction.performed += instance.OnDirection;
-                    @Direction.canceled += instance.OnDirection;
+                    @Move.started += instance.OnMove;
+                    @Move.performed += instance.OnMove;
+                    @Move.canceled += instance.OnMove;
                     @Look.started += instance.OnLook;
                     @Look.performed += instance.OnLook;
                     @Look.canceled += instance.OnLook;
@@ -309,7 +309,7 @@ namespace CriticalAngle.Input
         public PlayerActions @Player => new PlayerActions(this);
         public interface IPlayerActions
         {
-            void OnDirection(InputAction.CallbackContext context);
+            void OnMove(InputAction.CallbackContext context);
             void OnLook(InputAction.CallbackContext context);
             void OnJump(InputAction.CallbackContext context);
             void OnCrouch(InputAction.CallbackContext context);

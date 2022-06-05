@@ -126,11 +126,11 @@ MonoBehaviour:
     CharacterController: {fileID: 4344750640452850044}
   GeneralSettings:
     Radius: 0.5
-    FeetRadius: 0.35
+    FeetRadius: 0.5
     SlopeLimit: 40
     StepOffset: 0.3
     Friction: 5
-    StopSpeed: 0.2
+    StopSpeed: 0
     GroundMask:
       serializedVersion: 2
       m_Bits: 8
@@ -142,12 +142,12 @@ MonoBehaviour:
   MovementSettings:
     Walking:
       Enabled: 1
-      MaxSpeed: 10
-      Acceleration: 0.5
+      MaxSpeed: 5
+      Acceleration: 0.2
     Running:
       Enabled: 1
-      MaxSpeed: 20
-      Acceleration: 0.3
+      MaxSpeed: 10
+      Acceleration: 0.2
     Crouching:
       Enabled: 1
       MaxSpeed: 3
@@ -169,15 +169,6 @@ MonoBehaviour:
     AirAcceleration: 10
   PhysicsSettings:
     CanPushPhysicsObjects: 1
-    ObjectModifier: 3
-  InputSettings:
-    Actions: {fileID: -944628639613478452, guid: e8f6e7aad3d4f9f44b479039ac3ed1d1, type: 3}
-    Mapping: Player
-    DirectionalAction: Direction
-    LookAction: Look
-    JumpAction: Jump
-    CrouchAction: Crouch
-    RunAction: Run
   Velocity: {x: 0, y: 0, z: 0}
   IsGrounded: 0
   Parameters:
@@ -266,6 +257,17 @@ MonoBehaviour:
       Conditions:
       - Name: 0
         Value: 0
+  - Name: Crouch
+    Transitions: []
+  - Name: Air Crouch
+    Transitions: []
+  InputActions: {fileID: -944628639613478452, guid: e8f6e7aad3d4f9f44b479039ac3ed1d1, type: 3}
+  InputMapping: 0
+  MoveBinding: 0
+  RunBinding: 4
+  LookBinding: 1
+  JumpBinding: 2
+  CrouchBinding: 3
 --- !u!143 &4344750640452850044
 CharacterController:
   m_ObjectHideFlags: 0
@@ -279,8 +281,8 @@ CharacterController:
   serializedVersion: 2
   m_Height: 2
   m_Radius: 0.5
-  m_SlopeLimit: 40
+  m_SlopeLimit: 0
   m_StepOffset: 0.3
   m_SkinWidth: 0.001
-  m_MinMoveDistance: 0.001
+  m_MinMoveDistance: 0
   m_Center: {x: 0, y: 0, z: 0}
