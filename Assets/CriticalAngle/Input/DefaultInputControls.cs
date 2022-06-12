@@ -15,7 +15,7 @@ using System.Collections.Generic;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.Utilities;
 
-namespace CriticalAngle.ExpandablePlayer.Input
+namespace CriticalAngle.Input
 {
     public partial class @DefaultInputControls : IInputActionCollection2, IDisposable
     {

@@ -14146,6 +14146,14 @@ PrefabInstance:
       propertyPath: IsGrounded
       value: 1
       objectReference: {fileID: 0}
+    - target: {fileID: 4344750640452850035, guid: 0cae16c843cdeda49b0f83f670d451ba, type: 3}
+      propertyPath: MovementSettings.Walking.MaxSpeed
+      value: 100
+      objectReference: {fileID: 0}
+    - target: {fileID: 4344750640452850035, guid: 0cae16c843cdeda49b0f83f670d451ba, type: 3}
+      propertyPath: MovementSettings.Walking.Acceleration
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 4344750640452850047, guid: 0cae16c843cdeda49b0f83f670d451ba, type: 3}
       propertyPath: m_Name
       value: Player

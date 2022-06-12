@@ -20,7 +20,7 @@ namespace CriticalAngle.ExpandablePlayer
 
         #region Public Fields
 
-        public bool IsGrounded => this.References.CharacterController.isGrounded;
+        public bool IsGrounded { get; private set; }
         
         [HideInInspector] public Vector3 Velocity;
         [HideInInspector] public bool AboveMaxSlopeLimit;
@@ -139,6 +139,7 @@ namespace CriticalAngle.ExpandablePlayer
         {
             this.playerStates[this.activeState].Update();
 
+            this.CheckGrounded();
             this.CheckSlope();
 
             if (this.IsGrounded && !this.AboveMaxSlopeLimit)
@@ -147,9 +148,7 @@ namespace CriticalAngle.ExpandablePlayer
                 
                 this.canHitCeiling = true;
             }
-            
-            print(this.IsGrounded);
-            
+
             this.SnapToGround();
             this.UpdateStateParameters();
             this.UseGravity();
@@ -172,30 +171,14 @@ namespace CriticalAngle.ExpandablePlayer
 
         private void OnControllerColliderHit(ControllerColliderHit hit)
         {
-            if ((this.References.CharacterController.collisionFlags & CollisionFlags.Sides) != 0
-                || (this.References.CharacterController.isGrounded && !this.IsGrounded))
-            {
+            if ((this.References.CharacterController.collisionFlags & CollisionFlags.Sides) != 0 || !this.IsGrounded)
                 this.Velocity -= hit.normal * Vector3.Dot(this.Velocity, hit.normal);
-            } else if ((this.References.CharacterController.collisionFlags & CollisionFlags.Above) != 0)
+            else if ((this.References.CharacterController.collisionFlags & CollisionFlags.Above) != 0)
             {
-                if (this.canHitCeiling)
-                {
-                    this.Velocity -= hit.normal * Vector3.Dot(this.Velocity, hit.normal);
-                    this.canHitCeiling = false;
-                }
-            }
-
-            var platform = hit.gameObject.GetComponent<Platform>();
-            if (platform)
-            {
+                if (!this.canHitCeiling) return;
                 
-            }
-
-            if ((this.References.CharacterController.collisionFlags & CollisionFlags.Sides) == 0)
-            {
-                if (Physics.Raycast(hit.point, Vector3.down, out var ray, Mathf.Infinity,
-                        this.GeneralSettings.GroundMask))
-                    this.groundNormal = ray.normal;
+                this.Velocity -= hit.normal * Vector3.Dot(this.Velocity, hit.normal);
+                this.canHitCeiling = false;
             }
         }
 
@@ -398,7 +381,10 @@ namespace CriticalAngle.ExpandablePlayer
 
         protected virtual void UseGravity()
         {
-            this.Velocity += new Vector3(0.0f, Physics.gravity.y * Time.deltaTime);
+            if (this.IsGrounded)
+                this.Velocity.y = -this.References.CharacterController.stepOffset / Time.deltaTime;
+            else
+                this.Velocity.y += Physics.gravity.y * Time.deltaTime;
         }
 
         protected virtual void CalculateFriction()
@@ -428,13 +414,31 @@ namespace CriticalAngle.ExpandablePlayer
                 this.GeneralSettings.MinLookAngle, this.GeneralSettings.MaxLookAngle);
             
             this.References.Camera.transform.localEulerAngles = new Vector3(this.xRotation, 0.0f);
-            
         }
 
         protected virtual void CheckSlope()
         {
             if (Vector3.Angle(this.groundNormal, Vector3.up) > this.GeneralSettings.SlopeLimit)
                 this.AboveMaxSlopeLimit = false;
+        }
+
+        protected virtual void CheckGrounded()
+        {
+            var center = this.transform.position + this.References.CharacterController.center;
+            var maxDistance = this.References.CharacterController.height / 2.0f - this.GeneralSettings.Radius;
+            if (Physics.SphereCast(
+                    center,
+                    this.GeneralSettings.Radius,
+                    Vector3.down,
+                    out var hit,
+                    maxDistance + 0.1f,
+                    this.GeneralSettings.GroundMask))
+            {
+                this.IsGrounded = true;
+                this.groundNormal = hit.normal;
+            }
+            else
+                this.IsGrounded = false;
         }
         
         protected virtual void AirAccelerate(float speed, float accel)
