@@ -6,78 +6,86 @@ namespace CriticalAngle.ExpandablePlayer
 {
     public partial class Player : MonoBehaviour
     {
-        private bool isTransitioningCrouch;
-        private bool isTransitioningUnCrouch;
-        private bool isFullyCrouched;
-
-        private float crouchTime;
-        
-        private IEnumerator Crouch()
+        private IEnumerator Crouch(float time = 0.0f, bool cameFromUnCrouch = false)
         {
-            this.isTransitioningCrouch = true;
+            this.UpdateStateParameter("Should Uncrouch", false);
             
             var beginCameraHeight = this.MovementSettings.StandingCameraHeight;
             var endCameraHeight = this.MovementSettings.CrouchedCameraHeight;
 
             var maxTime = this.MovementSettings.TimeToCrouch;
 
-            var time = 0.0f;
-
             while (time < maxTime)
             {
-                this.References.Camera.transform.localPosition = new Vector3(0.0f,
-                    Mathf.Lerp(beginCameraHeight, endCameraHeight, time / maxTime));
+                if (!this.IsGrounded)
+                {
+                    this.References.Camera.transform.localPosition = beginCameraHeight.V3Y();
+                    this.UpdateStateParameter("Is Transitioning Crouch", false);
+                    yield break;
+                }
+                
+                if (!this.crouchInput)
+                {
+                    this.StartCoroutine(this.UnCrouch(maxTime - time, true));
+                    yield break;
+                }
+
+                this.References.Camera.transform.localPosition =
+                    Mathf.Lerp(beginCameraHeight, endCameraHeight, time / maxTime).V3Y();
 
                 time += Time.deltaTime;
-                this.crouchTime = time / maxTime;
                 yield return null;
             }
 
-            this.References.Camera.transform.localPosition = new Vector3(0.0f, endCameraHeight);
+            this.References.Camera.transform.localPosition = endCameraHeight.V3Y();
 
             var beginColliderHeight = this.MovementSettings.StandingColliderHeight;
             var endColliderHeight = this.MovementSettings.CrouchedColliderHeight;
 
             var center = (endColliderHeight - beginColliderHeight) / 2.0f;
 
-            this.References.CharacterController.center = new Vector3(0.0f, center);
+            this.References.CharacterController.center = center.V3Y();
             this.References.CharacterController.height = endColliderHeight;
             
-            this.isTransitioningCrouch = false;
-            this.isFullyCrouched = true;
+            this.UpdateStateParameter("Should Crouch", true);
+            this.UpdateStateParameter("Is Transitioning Crouch", false);
         }
         
-        private IEnumerator UnCrouch()
+        private IEnumerator UnCrouch(float time = 0.0f, bool cameFromCrouch = false)
         {
-            this.isTransitioningUnCrouch = true;
+            this.UpdateStateParameter("Should Crouch", false);
             
             var beginCameraHeight = this.MovementSettings.CrouchedCameraHeight;
             var endCameraHeight = this.MovementSettings.StandingCameraHeight;
 
-            var maxTime = this.MovementSettings.TimeToUncrouch;
-
-            var time = 0.0f;
+            var maxTime = this.MovementSettings.TimeToCrouch;
 
             while (time < maxTime)
             {
-                this.References.Camera.transform.localPosition = new Vector3(0.0f,
-                    Mathf.Lerp(beginCameraHeight, endCameraHeight, time / maxTime));
+                if (this.crouchInput)
+                {
+                    this.StartCoroutine(this.Crouch(maxTime - time, true));
+                    yield break;
+                }
+                
+                this.References.Camera.transform.localPosition =
+                    Mathf.Lerp(beginCameraHeight, endCameraHeight, time / maxTime).V3Y();
 
                 time += Time.deltaTime;
-                this.crouchTime = time / maxTime;
                 yield return null;
             }
 
-            this.References.Camera.transform.localPosition = new Vector3(0.0f, endCameraHeight);
+            this.References.Camera.transform.localPosition = endCameraHeight.V3Y();
 
             var colliderHeight = this.MovementSettings.StandingColliderHeight;
 
             this.References.CharacterController.center = Vector3.zero;
             this.References.CharacterController.height = colliderHeight;
-
-            this.isTransitioningUnCrouch = false;
+            
+            this.UpdateStateParameter("Should Uncrouch", true);
+            this.UpdateStateParameter("Is Transitioning Crouch", false);
         }
-
+        
         protected class IdleState : PlayerState
         {
             public IdleState(Player player) : base(player)
@@ -87,19 +95,6 @@ namespace CriticalAngle.ExpandablePlayer
             public override string GetStateName()
             {
                 return "Idle";
-            }
-
-            public override void Update()
-            {
-                if (this.Player.crouchInput && !this.Player.isTransitioningCrouch && !this.Player.isFullyCrouched)
-                    this.Player.StartCoroutine(this.Player.Crouch());
-                else if (!this.Player.crouchInput && this.Player.isTransitioningCrouch)
-                {
-                    this.Player.StopCoroutine(this.Player.Crouch());
-                    this.Player.isTransitioningCrouch = false;
-                    
-                    this.Player.StartCoroutine(this.Player.UnCrouch());
-                }
             }
         }
 
@@ -118,9 +113,6 @@ namespace CriticalAngle.ExpandablePlayer
             {
                 this.Player.GroundAccelerate(this.Player.MovementSettings.Walking.MaxSpeed,
                     this.Player.MovementSettings.Walking.Acceleration);
-                
-                if (this.Player.crouchInput && !this.Player.isTransitioningCrouch && !this.Player.isFullyCrouched)
-                    this.Player.StartCoroutine(this.Player.Crouch());
             }
         }
 
@@ -139,9 +131,6 @@ namespace CriticalAngle.ExpandablePlayer
             {
                 this.Player.GroundAccelerate(this.Player.MovementSettings.Running.MaxSpeed,
                     this.Player.MovementSettings.Running.Acceleration);
-                
-                if (this.Player.crouchInput && !this.Player.isTransitioningCrouch && !this.Player.isFullyCrouched)
-                    this.Player.StartCoroutine(this.Player.Crouch());
             }
         }
 
@@ -158,6 +147,7 @@ namespace CriticalAngle.ExpandablePlayer
 
             public override void OnStateEnter()
             {
+                this.Player.snapAmount = 0.0m;
                 this.Player.Velocity.y = Mathf.Sqrt(this.Player.MovementSettings.JumpForce * -2.0f * Physics.gravity.y);
             }
         }
@@ -175,6 +165,8 @@ namespace CriticalAngle.ExpandablePlayer
 
             public override void Update()
             {
+                this.Player.snapAmount = 0.0m;
+                
                 switch (this.Player.MovementSettings.AirStrafe)
                 {
                     case PlayerMovementSettings.AirStrafeType.Normal:
@@ -194,6 +186,7 @@ namespace CriticalAngle.ExpandablePlayer
             public CrouchState(Player player) : base(player)
             {
             }
+            
 
             public override string GetStateName()
             {
@@ -202,7 +195,12 @@ namespace CriticalAngle.ExpandablePlayer
 
             public override void OnStateEnter()
             {
-                
+                this.Player.UpdateStateParameter("Should Crouch", false);
+            }
+
+            public override void OnPostStateExit()
+            {
+                this.Player.UpdateStateParameter("Should Uncrouch", false);
             }
 
             public override void Update()
@@ -236,6 +234,56 @@ namespace CriticalAngle.ExpandablePlayer
                             this.Player.MovementSettings.AirAcceleration);
                         break;
                 }
+            }
+        }
+        
+        protected class ToCrouchState : PlayerState
+        {
+            public ToCrouchState(Player player) : base(player)
+            {
+            }
+            
+            public override string GetStateName()
+            {
+                return "To Crouch";
+            }
+
+            public override void OnStateEnter()
+            {
+                this.Player.UpdateStateParameter("Is Transitioning Crouch", true);
+                this.Player.UpdateStateParameter("Finished Crouch Callback", true);
+                
+                this.Player.StartCoroutine(this.Player.Crouch());
+            }
+
+            public override void OnPostStateExit()
+            {
+                this.Player.UpdateStateParameter("Finished Crouch Callback", false);
+            }
+        }
+        
+        protected class FromCrouchState : PlayerState
+        {
+            public FromCrouchState(Player player) : base(player)
+            {
+            }
+            
+            public override string GetStateName()
+            {
+                return "From Crouch";
+            }
+
+            public override void OnStateEnter()
+            {
+                this.Player.UpdateStateParameter("Is Transitioning Crouch", true);
+                this.Player.UpdateStateParameter("Finished Crouch Callback", true);
+                
+                this.Player.StartCoroutine(this.Player.UnCrouch());
+            }
+
+            public override void OnPostStateExit()
+            {
+                this.Player.UpdateStateParameter("Finished Crouch Callback", false);
             }
         }
     }

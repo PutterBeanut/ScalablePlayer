@@ -126,7 +126,7 @@ MonoBehaviour:
     CharacterController: {fileID: 4344750640452850044}
   GeneralSettings:
     Radius: 0.5
-    FeetRadius: 0.5
+    FeetRadius: 0.3
     SlopeLimit: 40
     StepOffset: 0.3
     Friction: 5
@@ -142,18 +142,17 @@ MonoBehaviour:
   MovementSettings:
     Walking:
       Enabled: 1
-      MaxSpeed: 5
+      MaxSpeed: 10
       Acceleration: 0.2
     Running:
       Enabled: 1
-      MaxSpeed: 10
+      MaxSpeed: 20
       Acceleration: 0.2
     Crouching:
       Enabled: 1
       MaxSpeed: 3
-      Acceleration: 0.35
-    TimeToCrouch: 0.25
-    TimeToUncrouch: 0.25
+      Acceleration: 0.2
+    TimeToCrouch: 0.15
     StandingCameraHeight: 0.75
     CrouchedCameraHeight: 0.25
     StandingColliderHeight: 2
@@ -162,7 +161,7 @@ MonoBehaviour:
     CanJumpWhileTransitioningCrouch: 1
     ToggleCrouch: 0
     CanJump: 1
-    JumpForce: 4
+    JumpForce: 1
     AirStrafe: 2
     CanCrouchWhileFalling: 1
     MaxAirAcceleration: 1
@@ -170,7 +169,7 @@ MonoBehaviour:
   PhysicsSettings:
     CanPushPhysicsObjects: 1
   Velocity: {x: 0, y: 0, z: 0}
-  IsGrounded: 0
+  DisableGravity: 0
   Parameters:
   - Name: Is Grounded
     Value: 0
@@ -178,9 +177,19 @@ MonoBehaviour:
     Value: 0
   - Name: Run Input
     Value: 0
+  - Name: Crouch Input
+    Value: 0
   - Name: Jump Input
     Value: 0
   - Name: Can Jump
+    Value: 0
+  - Name: Should Crouch
+    Value: 0
+  - Name: Should Uncrouch
+    Value: 0
+  - Name: Finished Crouch Callback
+    Value: 0
+  - Name: Is Transitioning Crouch
     Value: 0
   States:
   - Name: Idle
@@ -191,8 +200,6 @@ MonoBehaviour:
         Value: 1
     - ToState: 3
       Conditions:
-      - Name: 3
-        Value: 0
       - Name: 4
         Value: 0
     - ToState: 2
@@ -205,6 +212,16 @@ MonoBehaviour:
       Conditions:
       - Name: 1
         Value: 0
+    - ToState: 5
+      Conditions:
+      - Name: 6
+        Value: 0
+    - ToState: 7
+      Conditions:
+      - Name: 3
+        Value: 0
+      - Name: 9
+        Value: 1
   - Name: Walk
     Transitions:
     - ToState: 4
@@ -213,8 +230,6 @@ MonoBehaviour:
         Value: 1
     - ToState: 3
       Conditions:
-      - Name: 3
-        Value: 0
       - Name: 4
         Value: 0
     - ToState: 2
@@ -224,6 +239,16 @@ MonoBehaviour:
     - ToState: 0
       Conditions:
       - Name: 1
+        Value: 1
+    - ToState: 5
+      Conditions:
+      - Name: 6
+        Value: 0
+    - ToState: 7
+      Conditions:
+      - Name: 3
+        Value: 0
+      - Name: 9
         Value: 1
   - Name: Run
     Transitions:
@@ -233,8 +258,6 @@ MonoBehaviour:
         Value: 1
     - ToState: 3
       Conditions:
-      - Name: 3
-        Value: 0
       - Name: 4
         Value: 0
     - ToState: 1
@@ -246,6 +269,16 @@ MonoBehaviour:
     - ToState: 0
       Conditions:
       - Name: 1
+        Value: 1
+    - ToState: 5
+      Conditions:
+      - Name: 6
+        Value: 0
+    - ToState: 7
+      Conditions:
+      - Name: 3
+        Value: 0
+      - Name: 9
         Value: 1
   - Name: Jump
     Transitions:
@@ -258,9 +291,31 @@ MonoBehaviour:
       - Name: 0
         Value: 0
   - Name: Crouch
-    Transitions: []
+    Transitions:
+    - ToState: 0
+      Conditions:
+      - Name: 7
+        Value: 0
+    - ToState: 8
+      Conditions:
+      - Name: 3
+        Value: 1
+      - Name: 9
+        Value: 1
   - Name: Air Crouch
     Transitions: []
+  - Name: To Crouch
+    Transitions:
+    - ToState: 0
+      Conditions:
+      - Name: 8
+        Value: 0
+  - Name: From Crouch
+    Transitions:
+    - ToState: 5
+      Conditions:
+      - Name: 8
+        Value: 0
   InputActions: {fileID: -944628639613478452, guid: e8f6e7aad3d4f9f44b479039ac3ed1d1, type: 3}
   InputMapping: 0
   MoveBinding: 0
@@ -281,7 +336,7 @@ CharacterController:
   serializedVersion: 2
   m_Height: 2
   m_Radius: 0.5
-  m_SlopeLimit: 0
+  m_SlopeLimit: 89.99
   m_StepOffset: 0.3
   m_SkinWidth: 0.001
   m_MinMoveDistance: 0

@@ -7,7 +7,7 @@ using UnityEngine;
 namespace CriticalAngle.ExpandablePlayer.Editor
 {
     [CustomEditor(typeof(Player))]
-    public class ScalablePlayerEditor : UnityEditor.Editor
+    public class PlayerEditor : UnityEditor.Editor
     {
         private bool statesFoldout;
         private ReorderableList parametersList;
@@ -187,6 +187,8 @@ namespace CriticalAngle.ExpandablePlayer.Editor
                 GUILayout.EndHorizontal();
             }
             
+            GUILayout.Space(2);
+            
             this.inputFoldout = EditorGUILayout.Foldout(this.inputFoldout, "Input Settings", true);
 
             if (this.inputFoldout)
@@ -248,7 +250,9 @@ namespace CriticalAngle.ExpandablePlayer.Editor
             }
 
             player.HideComponents();
-            player.ApplyVariables();
+
+            if (!Application.isPlaying)
+                player.ApplyVariables();
 
             this.serializedObject.ApplyModifiedProperties();
         }

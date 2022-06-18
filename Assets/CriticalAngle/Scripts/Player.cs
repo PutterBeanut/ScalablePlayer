@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -23,8 +24,7 @@ namespace CriticalAngle.ExpandablePlayer
         public bool IsGrounded { get; private set; }
         
         [HideInInspector] public Vector3 Velocity;
-        [HideInInspector] public bool AboveMaxSlopeLimit;
-        
+        [HideInInspector] public bool DisableGravity = false;
         
         [HideInInspector] public List<StateParameter> Parameters = new();
         [HideInInspector] public List<State> States = new();
@@ -48,6 +48,7 @@ namespace CriticalAngle.ExpandablePlayer
         protected bool runInput;
 
         protected readonly List<PlayerState> playerStates = new();
+        protected readonly Dictionary<string, int> cachedStateParameters = new();
         protected int activeState;
 
         protected bool isCrouched;
@@ -56,7 +57,9 @@ namespace CriticalAngle.ExpandablePlayer
         protected float xRotation;
         protected decimal snapAmount;
         protected Vector3 groundNormal;
-        private bool canHitCeiling;
+        protected bool canHitCeiling;
+        protected Vector3 trueVelocity;
+        protected Vector3 previousPosition;
 
         #endregion
         
@@ -95,7 +98,7 @@ namespace CriticalAngle.ExpandablePlayer
             {
                 this.References.CharacterController.height = this.MovementSettings.StandingColliderHeight;
                 this.References.CharacterController.radius = this.GeneralSettings.Radius;
-                this.References.CharacterController.slopeLimit = 0.0f;
+                this.References.CharacterController.slopeLimit = 89.99f;
                 this.References.CharacterController.minMoveDistance = this.GeneralSettings.StopSpeed;
                 this.References.CharacterController.stepOffset = this.GeneralSettings.StepOffset;
                 this.References.CharacterController.skinWidth = 0.001f;
@@ -128,6 +131,7 @@ namespace CriticalAngle.ExpandablePlayer
             this.ValidateComponents();
             this.InitializeInputs();
             this.InitializeStates();
+            this.InitializeStateParameters();
             DisableCursor();
         }
 
@@ -137,23 +141,24 @@ namespace CriticalAngle.ExpandablePlayer
 
         protected virtual void Update()
         {
-            this.playerStates[this.activeState].Update();
-
-            this.CheckGrounded();
-            this.CheckSlope();
-
-            if (this.IsGrounded && !this.AboveMaxSlopeLimit)
+            var position = this.transform.position;
+            this.trueVelocity = position - this.previousPosition;
+            this.previousPosition = position;
+            
+            this.GroundCheck();
+            if (this.IsGrounded)
             {
                 this.CalculateFriction();
-                
                 this.canHitCeiling = true;
             }
 
             this.SnapToGround();
+            this.ApplyGravity();
             this.UpdateStateParameters();
-            this.UseGravity();
-
-            this.References.CharacterController.Move(new Vector3(0.0f, (float)this.snapAmount) +
+            
+            this.playerStates[this.activeState].Update();
+            
+            this.References.CharacterController.Move(((float)this.snapAmount).V3Y() +
                                                      this.Velocity * Time.deltaTime);
         }
 
@@ -169,16 +174,25 @@ namespace CriticalAngle.ExpandablePlayer
             this.playerStates[this.activeState].FixedUpdate();
         }
 
-        private void OnControllerColliderHit(ControllerColliderHit hit)
+        protected virtual void OnControllerColliderHit(ControllerColliderHit hit)
         {
-            if ((this.References.CharacterController.collisionFlags & CollisionFlags.Sides) != 0 || !this.IsGrounded)
-                this.Velocity -= hit.normal * Vector3.Dot(this.Velocity, hit.normal);
-            else if ((this.References.CharacterController.collisionFlags & CollisionFlags.Above) != 0)
+            if ((this.References.CharacterController.collisionFlags & CollisionFlags.Sides) != 0
+                || (this.References.CharacterController.isGrounded && !this.IsGrounded))
             {
-                if (!this.canHitCeiling) return;
-                
                 this.Velocity -= hit.normal * Vector3.Dot(this.Velocity, hit.normal);
-                this.canHitCeiling = false;
+            } else if ((this.References.CharacterController.collisionFlags & CollisionFlags.Above) != 0)
+            {
+                if (this.canHitCeiling)
+                {
+                    this.Velocity -= hit.normal * Vector3.Dot(this.Velocity, hit.normal);
+                    this.canHitCeiling = false;
+                }
+            }
+
+            var platform = hit.gameObject.GetComponent<Platform>();
+            if (platform)
+            {
+                this.Velocity += platform.velocity / Time.deltaTime;
             }
         }
 
@@ -230,22 +244,33 @@ namespace CriticalAngle.ExpandablePlayer
 
         private void InitializeStates()
         {
-            var tempPlayerStates = this.GetAllOfType<PlayerState>(this);
-            var names = tempPlayerStates.Select(state => state.GetStateName()).ToArray();
-            for (var i = 0; i < this.States.Count; i++)
+            var tempPlayerStates = GetAllOfType<PlayerState>(this);
+            var tempPlayerStateNames = tempPlayerStates.Select(state => state.GetStateName()).ToArray();
+            
+            var playerStateNames = this.States.Select(state => state.Name).ToArray();
+            foreach (var n in playerStateNames)
             {
-                var index = Array.FindIndex(names, s => s == this.States[i].Name);
+                var index = Array.FindIndex(tempPlayerStateNames, s => s == n);
 
                 if (index >= 0)
-                    this.playerStates.Add(tempPlayerStates[i]);
+                    this.playerStates.Add(tempPlayerStates[index]);
                 else
-                    this.Error("Cannot find a PlayerState class that returns the State name, `" +
-                               this.States[i].Name +
+                    this.Error("Cannot find a PlayerState class that returns the State name, `" + n +
                                ".` Make sure that you have a class definition that returns the correct name in its `GetStateName()` function.");
             }
         }
 
-        private T[] GetAllOfType<T>(params object[] args)
+        private void InitializeStateParameters()
+        {
+            var i = 0;
+            foreach (var parameter in this.Parameters)
+            {
+                this.cachedStateParameters.Add(parameter.Name, i);
+                i++;
+            }
+        }
+
+        private static T[] GetAllOfType<T>(params object[] args)
         {
             var results = new List<T>();
             
@@ -257,13 +282,13 @@ namespace CriticalAngle.ExpandablePlayer
             return results.ToArray();
         }
 
-        private static void EnableCursor()
+        protected static void EnableCursor()
         {
             Cursor.visible = true;
             Cursor.lockState = CursorLockMode.None;
         }
 
-        private static void DisableCursor()
+        protected static void DisableCursor()
         {
             Cursor.visible = false;
             Cursor.lockState = CursorLockMode.Locked;
@@ -275,24 +300,13 @@ namespace CriticalAngle.ExpandablePlayer
 
         protected void UpdateStateParameter(string parameterName, bool value)
         {
-            if (this.Parameters[this.FindStateParameter(parameterName)].Value == value) return;
-            
-            this.Parameters[this.FindStateParameter(parameterName)].Value = value;
-            this.CheckStateConditions();
+            var parameter = this.Parameters[this.cachedStateParameters[parameterName]];
+            parameter.Value = value;
         }
 
-        private int FindStateParameter(string parameterName)
+        protected bool GetStateParameter(string parameterName)
         {
-            var param = -1;
-            for (var i = 0; i < this.Parameters.Count; i++)
-            {
-                if (this.Parameters[i].Name == parameterName)
-                    param = i;
-            }
-
-            if (param == -1)
-                this.Error("Cannot find a parameter with the name `" + parameterName + ".`");
-            return param;
+            return this.Parameters[this.cachedStateParameters[parameterName]].Value;
         }
 
         private void CheckStateConditions()
@@ -320,14 +334,19 @@ namespace CriticalAngle.ExpandablePlayer
             this.UpdateStateParameter("Is Grounded", this.IsGrounded);
             this.UpdateStateParameter("Is Moving", this.moveInput.sqrMagnitude > 0.0f);
             this.UpdateStateParameter("Run Input", this.runInput);
+            this.UpdateStateParameter("Crouch Input", this.crouchInput);
             this.UpdateStateParameter("Jump Input", this.jumpInput);
             this.UpdateStateParameter("Can Jump", this.IsGrounded && this.Velocity.y <= 0.0f);
+            this.CheckStateConditions();
         }
 
         private void SetState(int stateIndex)
         {
-            this.playerStates[this.activeState].OnStateExit();
+            var previousState = this.activeState;
+            this.playerStates[previousState].OnStateExit();
+
             this.activeState = stateIndex;
+            this.playerStates[previousState].OnPostStateExit();
             this.playerStates[this.activeState].OnStateEnter();
         }
         
@@ -363,6 +382,10 @@ namespace CriticalAngle.ExpandablePlayer
             public virtual void OnStateExit()
             {
             }
+
+            public virtual void OnPostStateExit()
+            {
+            }
         }
 
         #endregion
@@ -379,11 +402,9 @@ namespace CriticalAngle.ExpandablePlayer
             return this.transform.TransformDirection(input);
         }
 
-        protected virtual void UseGravity()
+        protected virtual void ApplyGravity()
         {
-            if (this.IsGrounded)
-                this.Velocity.y = -this.References.CharacterController.stepOffset / Time.deltaTime;
-            else
+            if (!this.DisableGravity)
                 this.Velocity.y += Physics.gravity.y * Time.deltaTime;
         }
 
@@ -416,29 +437,28 @@ namespace CriticalAngle.ExpandablePlayer
             this.References.Camera.transform.localEulerAngles = new Vector3(this.xRotation, 0.0f);
         }
 
-        protected virtual void CheckSlope()
-        {
-            if (Vector3.Angle(this.groundNormal, Vector3.up) > this.GeneralSettings.SlopeLimit)
-                this.AboveMaxSlopeLimit = false;
-        }
-
-        protected virtual void CheckGrounded()
+        protected virtual void GroundCheck()
         {
             var center = this.transform.position + this.References.CharacterController.center;
             var maxDistance = this.References.CharacterController.height / 2.0f - this.GeneralSettings.Radius;
-            if (Physics.SphereCast(
-                    center,
-                    this.GeneralSettings.Radius,
-                    Vector3.down,
-                    out var hit,
-                    maxDistance + 0.1f,
-                    this.GeneralSettings.GroundMask))
+
+            if (!Physics.SphereCast(center, this.GeneralSettings.Radius,
+                    Vector3.down, out var hit, maxDistance + 0.05f))
             {
-                this.IsGrounded = true;
-                this.groundNormal = hit.normal;
-            }
-            else
                 this.IsGrounded = false;
+                return;
+            }
+
+            if (Physics.Raycast(hit.point + 0.01f.V3Y(), Vector3.down, out var groundHit))
+                this.groundNormal = groundHit.normal;
+
+            if(Vector3.Angle(this.groundNormal, Vector3.up) > this.GeneralSettings.SlopeLimit)
+            {
+                this.IsGrounded = false;
+                return;
+            }
+            
+            this.IsGrounded = (1 << hit.collider.gameObject.layer & this.GeneralSettings.GroundMask) > 0;
         }
         
         protected virtual void AirAccelerate(float speed, float accel)
@@ -499,7 +519,7 @@ namespace CriticalAngle.ExpandablePlayer
         
         protected virtual void SnapToGround()
         {
-            if (!this.IsGrounded)
+            if (!this.IsGrounded || this.trueVelocity.y > 0.0f)
             {
                 this.snapAmount = 0.0m;
                 return;
@@ -511,12 +531,14 @@ namespace CriticalAngle.ExpandablePlayer
                     this.References.CharacterController.height / 2.0f + this.GeneralSettings.StepOffset,
                     this.GeneralSettings.GroundMask))
             {
-                var skin = new Vector3(0.0f, 0.5f + this.References.CharacterController.skinWidth);
+                var skin = (0.5f + this.References.CharacterController.skinWidth).V3Y();
                 var calculatedCenter = hit.point + hit.normal * this.GeneralSettings.Radius + skin;
 
                 this.snapAmount = (decimal)calculatedCenter.y - (decimal)this.transform.position.y;
                 this.snapAmount = Math.Min(this.snapAmount, 0.0m);
             }
+            else
+                this.snapAmount = 0.0m;
         }
 
         #endregion
@@ -664,10 +686,8 @@ namespace CriticalAngle.ExpandablePlayer
             
             [Space] [Header("Crouching")]
 
-            [Tooltip("How much time it take for the camera to move from its standing position to its crouched position")]
+            [Tooltip("How much time it take for the camera to move from its standing position to its crouched position and vice versa.")]
             public float TimeToCrouch;
-            [Tooltip("How much time it take for the camera to move from its crouched position to its standing position")]
-            public float TimeToUncrouch;
             
             [Space]
             
@@ -716,7 +736,6 @@ namespace CriticalAngle.ExpandablePlayer
                 this.Running = new MovementParameters(false, 6.0f, 10.0f);
                 this.Crouching = new MovementParameters(true, 1.5f, 10.0f);
                 this.TimeToCrouch = 0.25f;
-                this.TimeToUncrouch = 0.25f;
                 this.StandingCameraHeight = 0.75f;
                 this.CrouchedCameraHeight = 0.25f;
                 this.StandingColliderHeight = 2.0f;
@@ -845,12 +864,6 @@ namespace CriticalAngle.ExpandablePlayer
             /// The value that our given parameter has to be set to.
             /// </summary>
             public Values Value;
-        }
-
-        protected class CollisionInfo
-        {
-            public int Buffer;
-            public Vector3 LastPosition;
         }
         
         #endregion
