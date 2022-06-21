@@ -6,7 +6,7 @@ namespace CriticalAngle.ExpandablePlayer
 {
     public partial class Player : MonoBehaviour
     {
-        private IEnumerator Crouch(float time = 0.0f, bool cameFromUnCrouch = false)
+        private IEnumerator Crouch(float time = 0.0f)
         {
             this.UpdateStateParameter("Should Uncrouch", false);
             
@@ -26,7 +26,7 @@ namespace CriticalAngle.ExpandablePlayer
                 
                 if (!this.crouchInput)
                 {
-                    this.StartCoroutine(this.UnCrouch(maxTime - time, true));
+                    this.StartCoroutine(this.Uncrouch(maxTime - time));
                     yield break;
                 }
 
@@ -51,7 +51,7 @@ namespace CriticalAngle.ExpandablePlayer
             this.UpdateStateParameter("Is Transitioning Crouch", false);
         }
         
-        private IEnumerator UnCrouch(float time = 0.0f, bool cameFromCrouch = false)
+        private IEnumerator Uncrouch(float time = 0.0f)
         {
             this.UpdateStateParameter("Should Crouch", false);
             
@@ -64,7 +64,14 @@ namespace CriticalAngle.ExpandablePlayer
             {
                 if (this.crouchInput)
                 {
-                    this.StartCoroutine(this.Crouch(maxTime - time, true));
+                    this.StartCoroutine(this.Crouch(maxTime - time));
+                    yield break;
+                }
+
+                if (!this.CanUncrouch())
+                {
+                    this.References.Camera.transform.localPosition = beginCameraHeight.V3Y();
+                    this.UpdateStateParameter("Is Transitioning Crouch", false);
                     yield break;
                 }
                 
@@ -84,6 +91,23 @@ namespace CriticalAngle.ExpandablePlayer
             
             this.UpdateStateParameter("Should Uncrouch", true);
             this.UpdateStateParameter("Is Transitioning Crouch", false);
+        }
+
+        private bool CanUncrouch()
+        {
+            var offset = this.transform.position -
+                         (this.MovementSettings.StandingColliderHeight / 2.0f - this.GeneralSettings.Radius).V3Y();
+
+            if (Physics.SphereCast(offset,
+                    this.GeneralSettings.Radius - this.References.CharacterController.skinWidth,
+                    Vector3.up,
+                    out var hit,
+                    this.MovementSettings.StandingColliderHeight - this.GeneralSettings.Radius * 2.0f))
+            {
+                print(hit.collider.name);
+                return false;
+            }
+            else return true;
         }
         
         protected class IdleState : PlayerState
@@ -207,6 +231,8 @@ namespace CriticalAngle.ExpandablePlayer
             {
                 this.Player.GroundAccelerate(this.Player.MovementSettings.Crouching.MaxSpeed,
                     this.Player.MovementSettings.Crouching.Acceleration);
+
+                this.Player.UpdateStateParameter("Can Uncrouch", this.Player.CanUncrouch());
             }
         }
 
@@ -278,7 +304,7 @@ namespace CriticalAngle.ExpandablePlayer
                 this.Player.UpdateStateParameter("Is Transitioning Crouch", true);
                 this.Player.UpdateStateParameter("Finished Crouch Callback", true);
                 
-                this.Player.StartCoroutine(this.Player.UnCrouch());
+                this.Player.StartCoroutine(this.Player.Uncrouch());
             }
 
             public override void OnPostStateExit()

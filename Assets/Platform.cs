@@ -1,50 +1,59 @@
 using System.Collections;
+using CriticalAngle.ExpandablePlayer;
 using UnityEngine;
 
 public class Platform : MonoBehaviour
 {
     public float maxTime = 2.0f;
-    public Vector3 velocity;
+    public float moveDistance = 5.0f;
+    public float waitTime = 2.0f;
 
-    private bool waiting;
-    private bool movingUp = true;
-
-    private float time;
-
-    private bool hasAssignedPosition = false;
-    private Vector3 position;
-
-    private void FixedUpdate()
+    private void Start()
     {
-        if (this.waiting)
-        {
-            this.time += Time.fixedDeltaTime;
+        this.StartCoroutine(this.WaitThenUp());
+    }
 
-            if (this.time > 1.0f)
-                this.waiting = false;
+    private IEnumerator MoveUp()
+    {
+        var time = 0.0f;
+        var beginPosition = this.transform.position;
+        var endPosition = beginPosition + this.moveDistance.V3Y();
+        
+        while (time < this.maxTime)
+        {
+            this.transform.position = Vector3.Lerp(beginPosition, endPosition, time / this.maxTime);
+            time += Time.deltaTime;
+            yield return null;
         }
 
-        if (!this.hasAssignedPosition)
+        this.StartCoroutine(this.WaitThenDown());
+    }
+
+    private IEnumerator WaitThenDown()
+    {
+        yield return new WaitForSeconds(this.waitTime);
+        this.StartCoroutine(this.MoveDown());
+    }
+    
+    private IEnumerator MoveDown()
+    {
+        var time = 0.0f;
+        var beginPosition = this.transform.position;
+        var endPosition = beginPosition - this.moveDistance.V3Y();
+        
+        while (time < this.maxTime)
         {
-            position = this.transform.position;
-            this.hasAssignedPosition = true;
+            this.transform.position = Vector3.Lerp(beginPosition, endPosition, time / this.maxTime);
+            time += Time.deltaTime;
+            yield return null;
         }
 
-        var offset = this.movingUp ? 5.0f : -5.0f;
-        var endPosition = position + new Vector3(0.0f, offset, 0.0f);
-
-        if (time < this.maxTime)
-        {
-            var oldPosition = this.transform.position;
-            this.GetComponent<Rigidbody>().MovePosition(Vector3.Lerp(position, endPosition, time / this.maxTime));
-            this.velocity = transform.position - oldPosition;
-
-            this.time += Time.fixedDeltaTime;
-            return;
-        }
-
-        this.hasAssignedPosition = false;
-        this.movingUp = !this.movingUp;
-        this.time = 0.0f;
+        this.StartCoroutine(this.WaitThenUp());
+    }
+    
+    private IEnumerator WaitThenUp()
+    {
+        yield return new WaitForSeconds(this.waitTime);
+        this.StartCoroutine(this.MoveUp());
     }
 }

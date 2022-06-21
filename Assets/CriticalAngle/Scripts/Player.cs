@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -22,13 +21,13 @@ namespace CriticalAngle.ExpandablePlayer
         #region Public Fields
 
         public bool IsGrounded { get; private set; }
-        
+
         [HideInInspector] public Vector3 Velocity;
         [HideInInspector] public bool DisableGravity = false;
-        
+
         [HideInInspector] public List<StateParameter> Parameters = new();
         [HideInInspector] public List<State> States = new();
-        
+
         [HideInInspector] public InputActionAsset InputActions;
         [HideInInspector] public int InputMapping;
         [HideInInspector] public int MoveBinding;
@@ -38,7 +37,7 @@ namespace CriticalAngle.ExpandablePlayer
         [HideInInspector] public int CrouchBinding;
 
         #endregion
-        
+
         #region Private Fields
 
         protected Vector2 moveInput;
@@ -51,21 +50,21 @@ namespace CriticalAngle.ExpandablePlayer
         protected readonly Dictionary<string, int> cachedStateParameters = new();
         protected int activeState;
 
-        protected bool isCrouched;
-        protected bool isTransitioningCrouched;
-
         protected float xRotation;
+        
         protected decimal snapAmount;
         protected Vector3 groundNormal;
         protected bool canHitCeiling;
+        
         protected Vector3 trueVelocity;
         protected Vector3 previousPosition;
 
         #endregion
-        
+
         #region Custom Inspector Functions
+
 #if UNITY_EDITOR
-        
+
         public void SetupReferences()
         {
             if (this.References.Camera == null)
@@ -118,6 +117,7 @@ namespace CriticalAngle.ExpandablePlayer
         }
 
 #endif
+
         #endregion
 
         #region Default Functions
@@ -144,7 +144,8 @@ namespace CriticalAngle.ExpandablePlayer
             var position = this.transform.position;
             this.trueVelocity = position - this.previousPosition;
             this.previousPosition = position;
-            
+
+            this.CeilingCheck();
             this.GroundCheck();
             if (this.IsGrounded)
             {
@@ -155,11 +156,36 @@ namespace CriticalAngle.ExpandablePlayer
             this.SnapToGround();
             this.ApplyGravity();
             this.UpdateStateParameters();
-            
+
             this.playerStates[this.activeState].Update();
+
+            /*Vector3[] continuousCollisionSweepVectors =
+            {
+                Vector3.left,
+                Vector3.right,
+                Vector3.up,
+                Vector3.down,
+                Vector3.forward,
+                Vector3.back,
+            };
             
-            this.References.CharacterController.Move(((float)this.snapAmount).V3Y() +
-                                                     this.Velocity * Time.deltaTime);
+            const int passes = 8;
+            const float strength = 0.01f;
+
+            for (int i = 0; i < passes; i++)
+            {
+                foreach (var vector in continuousCollisionSweepVectors)
+                {
+                    Vector3 oldPos = this.transform.position;
+                    this.References.CharacterController.Move(vector * strength);
+                    // ReSharper disable once Unity.InefficientPropertyAccess
+                    Vector3 delta = this.transform.position - oldPos;
+                    this.References.CharacterController.Move(-delta);
+                }
+            }*/
+            
+            var moveAmount = ((float)this.snapAmount).V3Y() + this.Velocity * Time.deltaTime;
+            this.References.CharacterController.Move(moveAmount);
         }
 
         protected virtual void LateUpdate()
@@ -176,47 +202,37 @@ namespace CriticalAngle.ExpandablePlayer
 
         protected virtual void OnControllerColliderHit(ControllerColliderHit hit)
         {
-            if ((this.References.CharacterController.collisionFlags & CollisionFlags.Sides) != 0
-                || (this.References.CharacterController.isGrounded && !this.IsGrounded))
-            {
+            var flags = this.References.CharacterController.collisionFlags;
+            var above = (flags & CollisionFlags.Above) != 0;
+            var sides = (flags & CollisionFlags.Sides) != 0;
+            
+            if ((sides && !above) || (this.References.CharacterController.isGrounded && !this.IsGrounded))
                 this.Velocity -= hit.normal * Vector3.Dot(this.Velocity, hit.normal);
-            } else if ((this.References.CharacterController.collisionFlags & CollisionFlags.Above) != 0)
-            {
-                if (this.canHitCeiling)
-                {
-                    this.Velocity -= hit.normal * Vector3.Dot(this.Velocity, hit.normal);
-                    this.canHitCeiling = false;
-                }
-            }
-
-            var platform = hit.gameObject.GetComponent<Platform>();
-            if (platform)
-            {
-                this.Velocity += platform.velocity / Time.deltaTime;
-            }
         }
 
         protected virtual void OnDestroy()
         {
             this.playerStates[this.activeState].OnDestroy();
-            
+
             this.InputActions.Disable();
         }
 
         #endregion
 
         #region Initialization
-        
+
         private void ValidateComponents()
         {
             if (this.References.Camera == null)
                 this.Warning("The Camera component is missing! Press the \"Setup References\" button to fix it.");
-            
+
             if (this.References.CharacterController == null)
-                this.Warning("The CharacterController component is missing! Press the \"Setup References\" button to fix it.");
-            
+                this.Warning(
+                    "The CharacterController component is missing! Press the \"Setup References\" button to fix it.");
+
             if (this.InputActions == null)
-                this.Warning("The Actions parameter is missing! Set up an InputActionAsset and drag it in or use the provided one to fix it.");
+                this.Warning(
+                    "The Actions parameter is missing! Set up an InputActionAsset and drag it in or use the provided one to fix it.");
         }
 
         private void InitializeInputs()
@@ -225,19 +241,19 @@ namespace CriticalAngle.ExpandablePlayer
             actions.Enable();
 
             var mapping = this.InputActions.actionMaps[this.InputMapping];
-            
+
             mapping.actions[this.MoveBinding].performed += this.OnMovementInput;
             mapping.actions[this.MoveBinding].canceled += this.OnMovementInput;
-            
+
             mapping.actions[LookBinding].performed += this.OnLookInput;
             mapping.actions[LookBinding].canceled += this.OnLookInput;
-            
+
             mapping.actions[JumpBinding].performed += this.OnJumpInput;
             mapping.actions[JumpBinding].canceled += this.OnJumpInput;
-            
+
             mapping.actions[CrouchBinding].performed += this.OnCrouchInput;
             mapping.actions[CrouchBinding].canceled += this.OnCrouchInput;
-            
+
             mapping.actions[RunBinding].performed += this.OnRunInput;
             mapping.actions[RunBinding].canceled += this.OnRunInput;
         }
@@ -246,7 +262,7 @@ namespace CriticalAngle.ExpandablePlayer
         {
             var tempPlayerStates = GetAllOfType<PlayerState>(this);
             var tempPlayerStateNames = tempPlayerStates.Select(state => state.GetStateName()).ToArray();
-            
+
             var playerStateNames = this.States.Select(state => state.Name).ToArray();
             foreach (var n in playerStateNames)
             {
@@ -273,7 +289,7 @@ namespace CriticalAngle.ExpandablePlayer
         private static T[] GetAllOfType<T>(params object[] args)
         {
             var results = new List<T>();
-            
+
             foreach (Type type in Assembly.GetAssembly(typeof(T)).GetTypes().Where(x =>
                          x.IsClass && !x.IsAbstract &&
                          x.IsSubclassOf(typeof(T))))
@@ -318,7 +334,7 @@ namespace CriticalAngle.ExpandablePlayer
                 {
                     var value = condition.Value == StateCondition.Values.True;
                     if (this.Parameters[condition.Name].Value == value) continue;
-                    
+
                     conditionsMet = false;
                     break;
                 }
@@ -349,11 +365,11 @@ namespace CriticalAngle.ExpandablePlayer
             this.playerStates[previousState].OnPostStateExit();
             this.playerStates[this.activeState].OnStateEnter();
         }
-        
+
         protected abstract class PlayerState
         {
             protected readonly Player Player;
-            
+
             protected PlayerState(Player player) =>
                 this.Player = player;
 
@@ -378,7 +394,7 @@ namespace CriticalAngle.ExpandablePlayer
             public virtual void OnDestroy()
             {
             }
-            
+
             public virtual void OnStateExit()
             {
             }
@@ -389,7 +405,7 @@ namespace CriticalAngle.ExpandablePlayer
         }
 
         #endregion
-        
+
         #region Character
 
         protected virtual Vector3 InputVectorToDirection(Vector2 input)
@@ -412,7 +428,7 @@ namespace CriticalAngle.ExpandablePlayer
         {
             var speed = this.Velocity.magnitude;
             if (speed == 0.0f) return;
-            
+
             var friction = this.GeneralSettings.Friction;
             var control = Mathf.Max(speed, this.GeneralSettings.StopSpeed);
             var drop = control * friction * Time.deltaTime;
@@ -424,16 +440,16 @@ namespace CriticalAngle.ExpandablePlayer
         protected virtual void HandleRotation()
         {
             var look = this.lookInput * Time.deltaTime;
-            
+
             this.transform.Rotate(0.0f, look.x * this.GeneralSettings.Sensitivity
                                                * this.GeneralSettings.SensitivityY, 0.0f);
 
             this.xRotation -= look.y * this.GeneralSettings.Sensitivity
-                                   * this.GeneralSettings.SensitivityX;
-            
+                                     * this.GeneralSettings.SensitivityX;
+
             this.xRotation = Mathf.Clamp(this.xRotation,
                 this.GeneralSettings.MinLookAngle, this.GeneralSettings.MaxLookAngle);
-            
+
             this.References.Camera.transform.localEulerAngles = new Vector3(this.xRotation, 0.0f);
         }
 
@@ -452,15 +468,30 @@ namespace CriticalAngle.ExpandablePlayer
             if (Physics.Raycast(hit.point + 0.01f.V3Y(), Vector3.down, out var groundHit))
                 this.groundNormal = groundHit.normal;
 
-            if(Vector3.Angle(this.groundNormal, Vector3.up) > this.GeneralSettings.SlopeLimit)
+            if (Vector3.Angle(this.groundNormal, Vector3.up) > this.GeneralSettings.SlopeLimit)
             {
                 this.IsGrounded = false;
                 return;
             }
-            
-            this.IsGrounded = (1 << hit.collider.gameObject.layer & this.GeneralSettings.GroundMask) > 0;
+
+            var otherLayer = hit.collider.gameObject.layer;
+            this.IsGrounded = (1 << otherLayer & this.GeneralSettings.GroundMask) > 0;
         }
-        
+
+        protected virtual void CeilingCheck()
+        {
+            if (!this.canHitCeiling) return;
+
+            var center = this.transform.position + this.References.CharacterController.center;
+            var maxDistance = this.References.CharacterController.height / 2.0f - this.GeneralSettings.Radius;
+
+            if (Physics.SphereCast(center, this.GeneralSettings.Radius, Vector3.up, out var hit, maxDistance + 0.05f))
+            {
+                this.Velocity -= hit.normal * Vector3.Dot(this.Velocity, hit.normal);
+                this.canHitCeiling = false;
+            }
+        }
+
         protected virtual void AirAccelerate(float speed, float accel)
         {
             var direction = this.GlobalToLocalSpace(this.InputVectorToDirection(this.moveInput.normalized));
@@ -506,17 +537,17 @@ namespace CriticalAngle.ExpandablePlayer
         protected virtual void GroundAccelerate(float speed, float accel)
         {
             var direction = this.GlobalToLocalSpace(this.InputVectorToDirection(this.moveInput.normalized));
-            
+
             var targetVelocity = direction * speed;
             var velocityChange = targetVelocity - this.Velocity;
             var acceleration = velocityChange / Time.deltaTime;
 
             acceleration = Vector3.ClampMagnitude(acceleration, accel);
             acceleration.y = 0.0f;
-            
+
             this.Velocity += acceleration;
         }
-        
+
         protected virtual void SnapToGround()
         {
             if (!this.IsGrounded || this.trueVelocity.y > 0.0f)
@@ -524,7 +555,7 @@ namespace CriticalAngle.ExpandablePlayer
                 this.snapAmount = 0.0m;
                 return;
             }
-            
+
             var center = this.transform.position + this.References.CharacterController.center;
 
             if (Physics.SphereCast(center, this.GeneralSettings.FeetRadius, Vector3.down, out var hit,
@@ -549,25 +580,25 @@ namespace CriticalAngle.ExpandablePlayer
         {
             this.moveInput = ctx.ReadValue<Vector2>();
         }
-        
+
         private void OnLookInput(InputAction.CallbackContext ctx)
         {
             this.lookInput = ctx.ReadValue<Vector2>();
         }
-        
+
         private void OnJumpInput(InputAction.CallbackContext ctx)
         {
-            this.jumpInput = (int) ctx.ReadValue<float>() == 1;
+            this.jumpInput = (int)ctx.ReadValue<float>() == 1;
         }
-        
+
         private void OnCrouchInput(InputAction.CallbackContext ctx)
         {
-            this.crouchInput = (int) ctx.ReadValue<float>() == 1;
+            this.crouchInput = (int)ctx.ReadValue<float>() == 1;
         }
-        
+
         private void OnRunInput(InputAction.CallbackContext ctx)
         {
-            this.runInput = (int) ctx.ReadValue<float>() == 1;
+            this.runInput = (int)ctx.ReadValue<float>() == 1;
         }
 
         #endregion
@@ -578,14 +609,14 @@ namespace CriticalAngle.ExpandablePlayer
         {
             Debug.LogError(this.GetType() + ": " + text);
         }
-        
+
         protected virtual void Warning(string text)
         {
             Debug.LogWarning(this.GetType() + ": " + text);
         }
 
         #endregion
-        
+
         #region Settings
 
         /// <summary>
@@ -597,40 +628,49 @@ namespace CriticalAngle.ExpandablePlayer
             public Camera Camera;
             public CharacterController CharacterController;
         }
-        
+
         /// <summary>
         /// Miscellaneous settings to be used throughout the code.
         /// </summary>
         [Serializable]
         public class PlayerGeneralSettings
         {
-            [Header("Player")]
-            
-            [Tooltip("The radius of our capsule collider.")] [Min(0.0f)]
+            [Header("Player")] [Tooltip("The radius of our capsule collider.")] [Min(0.0f)]
             public float Radius;
-            [Tooltip("The radius how far we're allowed to stick to the ground. Should be less than or equal to our collider's radius.")] [Min(0.0f)]
+
+            [Tooltip(
+                "The radius how far we're allowed to stick to the ground. Should be less than or equal to our collider's radius.")]
+            [Min(0.0f)]
             public float FeetRadius;
+
             [Tooltip("The max slope angle (in degrees) that we can travel.")] [Range(1, 90)]
             public int SlopeLimit;
+
             [Tooltip("The maximum height of a surface that we can step up onto.")] [Min(0.0f)]
             public float StepOffset;
+
             [Tooltip("The amount of linear friction to be applied to the player while braking.")]
             public float Friction;
+
             [Tooltip("The speed at which the player should stop moving.")]
             public float StopSpeed;
-            [Tooltip("Select the layer(s) that the ground is on using this layer mask. This will allow the player to filter out collisions when checking for if we're grounded.")]
+
+            [Tooltip(
+                "Select the layer(s) that the ground is on using this layer mask. This will allow the player to filter out collisions when checking for if we're grounded.")]
             public LayerMask GroundMask;
-            
-            [Space] [Header("Camera")]
-            
-            [Tooltip("How fast should the player be able to look around?")]
+
+            [Space] [Header("Camera")] [Tooltip("How fast should the player be able to look around?")]
             public float Sensitivity;
+
             [Tooltip("How fast should the player be able to look around on the X axis?")]
             public float SensitivityX;
+
             [Tooltip("How fast should the player be able to look around on the Y axis?")]
             public float SensitivityY;
+
             [Tooltip("The lowest that the camera can look down.")]
             public float MinLookAngle;
+
             [Tooltip("The highest that the camera can look down.")]
             public float MaxLookAngle;
 
@@ -665,68 +705,73 @@ namespace CriticalAngle.ExpandablePlayer
                 /// We cannot control our velocity in air.
                 /// </summary>
                 None,
+
                 /// <summary>
                 /// Allows the player to freely travel while in air.
                 /// </summary>
                 Normal,
+
                 /// <summary>
                 /// Uses the Source Engine movement to travel in air.
                 /// </summary>
                 Acceleration
             }
-            
-            [Header("Movement Parameters")]
-            
-            [Tooltip("Settings for when the player is in the Walk state.")]
+
+            [Header("Movement Parameters")] [Tooltip("Settings for when the player is in the Walk state.")]
             public MovementParameters Walking;
+
             [Tooltip("Settings for when the player is in the Run state.")]
             public MovementParameters Running;
+
             [Tooltip("Settings for when the player is in the Crouch state.")]
             public MovementParameters Crouching;
-            
-            [Space] [Header("Crouching")]
 
-            [Tooltip("How much time it take for the camera to move from its standing position to its crouched position and vice versa.")]
-            public float TimeToCrouch;
-            
             [Space]
-            
-            [Tooltip("Where should the camera be when we are standing?")]
+            [Header("Crouching")]
+            [Tooltip(
+                "How much time it take for the camera to move from its standing position to its crouched position and vice versa.")]
+            public float TimeToCrouch;
+
+            [Space] [Tooltip("Where should the camera be when we are standing?")]
             public float StandingCameraHeight;
+
             [Tooltip("Where should the camera be when we are crouched?")]
             public float CrouchedCameraHeight;
+
             [Tooltip("How tall should our collider be while standing?")]
             public float StandingColliderHeight;
+
             [Tooltip("How tall should our collider be while crouched?")]
             public float CrouchedColliderHeight;
-            
-            [Space]
-            
-            [Tooltip("Should we be able to jump in the air when we are fully crouched?")]
+
+            [Space] [Tooltip("Should we be able to jump in the air when we are fully crouched?")]
             public bool CanJumpWhileCrouched;
+
             [Tooltip("Should we be able to jump while transitioning form standing to crouched?")]
             public bool CanJumpWhileTransitioningCrouch;
+
             [Tooltip("Should we have to hold the crouch key to stay crouched or press it to toggle it?")]
             public bool ToggleCrouch;
 
-            [Space] [Header("Jumping")]
-            
-            [Tooltip("Are we allowed to jump?")]
+            [Space] [Header("Jumping")] [Tooltip("Are we allowed to jump?")]
             public bool CanJump;
+
             [Tooltip("The upward force added when the jump key is pressed.")]
             public float JumpForce;
 
-            [Space] [Header("Falling")]
-
-            [Tooltip("Are we allowed to strafe in air? This will override the `AirControl` property with air strafing code.")]
-            public AirStrafeType AirStrafe;
-            [Tooltip("Should we be able to crouch in air? This will cause the the feet to be raised as opposed to the head being lowered.")]
-            public bool CanCrouchWhileFalling;
-            
             [Space]
-            
-            [Tooltip("What is the maximum speed we should be able to travel while air strafing?")]
+            [Header("Falling")]
+            [Tooltip(
+                "Are we allowed to strafe in air? This will override the `AirControl` property with air strafing code.")]
+            public AirStrafeType AirStrafe;
+
+            [Tooltip(
+                "Should we be able to crouch in air? This will cause the the feet to be raised as opposed to the head being lowered.")]
+            public bool CanCrouchWhileFalling;
+
+            [Space] [Tooltip("What is the maximum speed we should be able to travel while air strafing?")]
             public float MaxAirAcceleration;
+
             [Tooltip("The multiplier for how fast we should travel while air strafing.")]
             public float AirAcceleration;
 
@@ -774,11 +819,10 @@ namespace CriticalAngle.ExpandablePlayer
         {
             [Tooltip("Should we be able to perform this movement action?")]
             public bool Enabled;
-            
-            [Space]
-            
-            [Tooltip("The max speed that we desire the player to travel.")]
+
+            [Space] [Tooltip("The max speed that we desire the player to travel.")]
             public float MaxSpeed;
+
             [Tooltip("How fast we should accelerate to the desired speed.")] [Range(0.0f, 1.0f)]
             public float Acceleration;
 
@@ -789,7 +833,7 @@ namespace CriticalAngle.ExpandablePlayer
                 this.Acceleration = acceleration;
             }
         }
-        
+
         /// <summary>
         /// Parameter used to check for when a state should transition to another state;
         /// defined in the inspector.
@@ -801,12 +845,13 @@ namespace CriticalAngle.ExpandablePlayer
             /// The name of the parameter that we can set.
             /// </summary>
             public string Name;
+
             /// <summary>
             /// The value that the parameter has.
             /// </summary>
             public bool Value;
         }
-        
+
         /// <summary>
         /// Fields for an individual state that contain its name and the states it can transition out of;
         /// defined in the inspector.
@@ -818,6 +863,7 @@ namespace CriticalAngle.ExpandablePlayer
             /// The name of the state.
             /// </summary>
             public string Name;
+
             /// <summary>
             /// The list of transitions.
             /// </summary>
@@ -836,6 +882,7 @@ namespace CriticalAngle.ExpandablePlayer
             /// Provides an index of the state's location.
             /// </summary>
             public int ToState;
+
             /// <summary>
             /// The conditions that have to be met to transition to the specified state.
             /// </summary>
@@ -860,12 +907,13 @@ namespace CriticalAngle.ExpandablePlayer
             /// Provides an index of the parameter's location.
             /// </summary>
             public int Name;
+
             /// <summary>
             /// The value that our given parameter has to be set to.
             /// </summary>
             public Values Value;
         }
-        
+
         #endregion
     }
 }
