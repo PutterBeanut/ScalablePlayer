@@ -10,7 +10,7 @@ namespace CriticalAngle.ExpandablePlayer
     public partial class Player : MonoBehaviour
     {
         #region Inspector Fields
-
+        
         [SerializeField] protected PlayerReferences References;
         [SerializeField] protected PlayerGeneralSettings GeneralSettings;
         [SerializeField] protected PlayerMovementSettings MovementSettings;
@@ -39,17 +39,17 @@ namespace CriticalAngle.ExpandablePlayer
         #endregion
 
         #region Private Fields
-
+        
         protected Vector2 moveInput;
         protected Vector2 lookInput;
         protected bool jumpInput;
         protected bool crouchInput;
         protected bool runInput;
-
+        
         protected readonly List<PlayerState> playerStates = new();
         protected readonly Dictionary<string, int> cachedStateParameters = new();
         protected int activeState;
-
+        
         protected float xRotation;
         
         protected decimal snapAmount;
@@ -65,6 +65,10 @@ namespace CriticalAngle.ExpandablePlayer
 
 #if UNITY_EDITOR
 
+        /// <summary>
+        /// Clicking the corresponding button in the Inspector calls this function.
+        /// Adds the CharacterController and Camera components if they cannot be found.
+        /// </summary>
         public void SetupReferences()
         {
             if (this.References.Camera == null)
@@ -88,6 +92,11 @@ namespace CriticalAngle.ExpandablePlayer
             }
         }
 
+        /// <summary>
+        /// Makes sure that the CharacterController and some other variables aren't incorrect.
+        /// The CharacterController should not be tampered with by the user, since this script has all of
+        /// the necessary variables to control it.
+        /// </summary>
         public void ApplyVariables()
         {
             this.References.Camera.transform.localPosition = new Vector3(0.0f,
@@ -110,6 +119,9 @@ namespace CriticalAngle.ExpandablePlayer
                 this.GeneralSettings.MaxLookAngle = this.GeneralSettings.MinLookAngle;
         }
 
+        /// <summary>
+        /// You can probably guess what this one does.
+        /// </summary>
         public void HideComponents()
         {
             if (this.References.CharacterController != null)
@@ -122,6 +134,11 @@ namespace CriticalAngle.ExpandablePlayer
 
         #region Default Functions
 
+        /*
+         * All of the main default functions are created and made virtual (even if they're not used),
+         * just to make things more consistent.
+         */
+        
         protected virtual void OnEnable()
         {
         }
@@ -141,10 +158,12 @@ namespace CriticalAngle.ExpandablePlayer
 
         protected virtual void Update()
         {
+            // Our true velocity will allow us to tell how much we actually move,
+            // since `this.Velocity` is our *desired* velocity, not how much we actually displace each frame.
             var position = this.transform.position;
             this.trueVelocity = position - this.previousPosition;
             this.previousPosition = position;
-
+            
             this.CeilingCheck();
             this.GroundCheck();
             if (this.IsGrounded)
@@ -184,6 +203,7 @@ namespace CriticalAngle.ExpandablePlayer
                 }
             }*/
             
+            // Do the final character movement
             var moveAmount = ((float)this.snapAmount).V3Y() + this.Velocity * Time.deltaTime;
             this.References.CharacterController.Move(moveAmount);
         }
@@ -206,6 +226,8 @@ namespace CriticalAngle.ExpandablePlayer
             var above = (flags & CollisionFlags.Above) != 0;
             var sides = (flags & CollisionFlags.Sides) != 0;
             
+            // In other words, if we are not colliding from above but we are colliding from the sides,
+            // add an equal and opposite force to the player to align better with real life.
             if ((sides && !above) || (this.References.CharacterController.isGrounded && !this.IsGrounded))
                 this.Velocity -= hit.normal * Vector3.Dot(this.Velocity, hit.normal);
         }
@@ -220,7 +242,7 @@ namespace CriticalAngle.ExpandablePlayer
         #endregion
 
         #region Initialization
-
+        
         private void ValidateComponents()
         {
             if (this.References.Camera == null)
@@ -258,11 +280,18 @@ namespace CriticalAngle.ExpandablePlayer
             mapping.actions[RunBinding].canceled += this.OnRunInput;
         }
 
+        /// <summary>
+        /// Gets all of the classes in our assembler that derive from `PlayerState` and creates an instance
+        /// of each. This allows us to simply create states and not have to worry about any extra setup.
+        /// </summary>
         private void InitializeStates()
         {
             var tempPlayerStates = GetAllOfType<PlayerState>(this);
             var tempPlayerStateNames = tempPlayerStates.Select(state => state.GetStateName()).ToArray();
 
+            // Match each player state in `tempPlayerStates` to the names in `this.States.`
+            // Not doing this will cause bugs regarding the order of states not matching the
+            // states in the inspector.
             var playerStateNames = this.States.Select(state => state.Name).ToArray();
             foreach (var n in playerStateNames)
             {
@@ -286,6 +315,13 @@ namespace CriticalAngle.ExpandablePlayer
             }
         }
 
+        /// <summary>
+        /// An extremely helpful function to access all of the classes in the assembler that derive from
+        /// a single class. This will be used to get all of the `PlayerState` classes in our assembly.
+        /// </summary>
+        /// <param name="args">Any arguments that the class might take. This is ambiguous so it could throw an error.</param>
+        /// <typeparam name="T">The type of class we want to retrieve.</typeparam>
+        /// <returns></returns>
         private static T[] GetAllOfType<T>(params object[] args)
         {
             var results = new List<T>();
@@ -298,12 +334,18 @@ namespace CriticalAngle.ExpandablePlayer
             return results.ToArray();
         }
 
+        /// <summary>
+        /// The most complicated function in this entire script.
+        /// </summary>
         protected static void EnableCursor()
         {
             Cursor.visible = true;
             Cursor.lockState = CursorLockMode.None;
         }
 
+        /// <summary>
+        /// The second most complicated function in this entire script.
+        /// </summary>
         protected static void DisableCursor()
         {
             Cursor.visible = false;
@@ -314,17 +356,33 @@ namespace CriticalAngle.ExpandablePlayer
 
         #region State Management
 
+        /// <summary>
+        /// Simply update our parameters list to check if we should switch states.
+        /// </summary>
+        /// <param name="parameterName">Name of parameter.</param>
+        /// <param name="value">New value of parameter.</param>
         protected void UpdateStateParameter(string parameterName, bool value)
         {
             var parameter = this.Parameters[this.cachedStateParameters[parameterName]];
             parameter.Value = value;
         }
 
+        /// <summary>
+        /// Returns the value of the given parameter name for general use.
+        /// </summary>
+        /// <param name="parameterName">Name of the parameter.</param>
+        /// <returns>Value of the parameter.</returns>
         protected bool GetStateParameter(string parameterName)
         {
             return this.Parameters[this.cachedStateParameters[parameterName]].Value;
         }
 
+        /// <summary>
+        /// This function is the meat and potatoes of our state machine.
+        /// Based on the conditions that we specify in the inspector,
+        /// we check at each frame if our parameters match the conditions.
+        /// If so, switch the state to the specified one in the inspector.
+        /// </summary>
         private void CheckStateConditions()
         {
             foreach (var transition in this.States[this.activeState].Transitions)
@@ -345,6 +403,9 @@ namespace CriticalAngle.ExpandablePlayer
             }
         }
 
+        /// <summary>
+        /// A central hub to update some of the default parameters.
+        /// </summary>
         private void UpdateStateParameters()
         {
             this.UpdateStateParameter("Is Grounded", this.IsGrounded);
@@ -355,7 +416,12 @@ namespace CriticalAngle.ExpandablePlayer
             this.UpdateStateParameter("Can Jump", this.IsGrounded && this.Velocity.y <= 0.0f);
             this.CheckStateConditions();
         }
-
+        
+        /// <summary>
+        /// Actually transition from one state to another.
+        /// This is NOT meant to be called by the user and the
+        /// only function that *should* call it is `this.CheckStateConditions.`
+        /// </summary>
         private void SetState(int stateIndex)
         {
             var previousState = this.activeState;
@@ -366,15 +432,31 @@ namespace CriticalAngle.ExpandablePlayer
             this.playerStates[this.activeState].OnStateEnter();
         }
 
+        /// <summary>
+        /// The base class for any state that we should transition to.
+        /// </summary>
         protected abstract class PlayerState
         {
+            /// <summary>
+            /// A reference to our player.
+            /// Since the states are contained inside the `Player` class,
+            /// we can call any private/protected function we'd like.
+            /// </summary>
             protected readonly Player Player;
-
+            
             protected PlayerState(Player player) =>
                 this.Player = player;
 
+            /// <summary>
+            /// This allows for us to couple the state created in the inspector
+            /// with the `PlayerState` class that we create in code.
+            /// </summary>
+            /// <returns></returns>
             public abstract string GetStateName();
 
+            /// <summary>
+            /// Called when we switch to this state.
+            /// </summary>
             public virtual void OnStateEnter()
             {
             }
@@ -395,10 +477,16 @@ namespace CriticalAngle.ExpandablePlayer
             {
             }
 
+            /// <summary>
+            /// Called when we switch to another state when this state is active.
+            /// </summary>
             public virtual void OnStateExit()
             {
             }
 
+            /// <summary>
+            /// This function is called on the PREVIOUS state AFTER `OnStateEnter` is called on the NEW state.
+            /// </summary>
             public virtual void OnPostStateExit()
             {
             }
@@ -408,11 +496,20 @@ namespace CriticalAngle.ExpandablePlayer
 
         #region Character
 
+        /// <summary>
+        /// Maps an input, which is a Vector2 because of the New Input System,
+        /// to a Vector3 that's on a flat plane.
+        /// </summary>
         protected virtual Vector3 InputVectorToDirection(Vector2 input)
         {
             return new Vector3(input.x, 0.0f, input.y);
         }
 
+        /// <summary>
+        /// Takes an input and modifies it to face the direction that the player is facing.
+        /// For example, if we hold W and turn to the right, our character will
+        /// travel straight but in that rightward direction.
+        /// </summary>
         protected virtual Vector3 GlobalToLocalSpace(Vector3 input)
         {
             return this.transform.TransformDirection(input);
@@ -424,6 +521,11 @@ namespace CriticalAngle.ExpandablePlayer
                 this.Velocity.y += Physics.gravity.y * Time.deltaTime;
         }
 
+        /// <summary>
+        /// This is code stolen straight from the Source SDK 2013.
+        /// You can find the code on Github here:
+        /// https://github.com/ValveSoftware/source-sdk-2013/blob/0d8dceea4310fde5706b3ce1c70609d72a38efdf/sp/src/game/shared/gamemovement.cpp#L2256-L2339
+        /// </summary>
         protected virtual void CalculateFriction()
         {
             var speed = this.Velocity.magnitude;
@@ -437,6 +539,9 @@ namespace CriticalAngle.ExpandablePlayer
             this.Velocity *= newSpeed;
         }
 
+        /// <summary>
+        /// Takes our rotational input and rotates our camera's X axis and player's Y axis.
+        /// </summary>
         protected virtual void HandleRotation()
         {
             var look = this.lookInput * Time.deltaTime;
@@ -456,21 +561,28 @@ namespace CriticalAngle.ExpandablePlayer
         protected virtual void GroundCheck()
         {
             var center = this.transform.position + this.References.CharacterController.center;
+            
+            // Based on our collider height and center, calculate how far our
+            // `SphereCast` can travel to check to see if we're grounded.
             var maxDistance = this.References.CharacterController.height / 2.0f - this.GeneralSettings.Radius;
 
+            // Calculate if we're grounded using said `SphereCast`.
             if (!Physics.SphereCast(center, this.GeneralSettings.Radius, Vector3.down, out var hit,
                     maxDistance + 0.05f))
             {
                 this.IsGrounded = false;
                 return;
             }
-            else
-            {
-            }
 
+            // This will get our ground normal.
+            // The reason we don't get it via `hit.normal` in the `SphereCast`
+            // is that the Sphere's normal is also taken into account, which is undesirable.
+            // So instead we cast a raycast straight down based off the *point* at which we hit
+            // from the `SphereCast` to allow for the normal to be on a constant flat plane (Vector3.down).
             if (Physics.Raycast(hit.point + 0.01f.V3Y(), Vector3.down, out var groundHit))
                 this.groundNormal = groundHit.normal;
 
+            // This takes our ground normal and checks if we are standing on a slope that exceeds our slope limit.
             if (Vector3.Angle(this.groundNormal, Vector3.up) > this.GeneralSettings.SlopeLimit)
             {
                 this.IsGrounded = false;
@@ -478,9 +590,15 @@ namespace CriticalAngle.ExpandablePlayer
             }
 
             var otherLayer = hit.collider.gameObject.layer;
+            // Do scary bitmask operations to detect if we're actually grounded or not using our `GroundMask`.
             this.IsGrounded = (1 << otherLayer & this.GeneralSettings.GroundMask) > 0;
         }
 
+        /// <summary>
+        /// This function essentially does the same exact thing as `this.GroundCheck` but checks
+        /// if something is above our head. This fixes a bug by allowing us to hit a ceiling once
+        /// then immediately lose velocity and fall back down.
+        /// </summary>
         protected virtual void CeilingCheck()
         {
             if (!this.canHitCeiling) return;
@@ -490,11 +608,18 @@ namespace CriticalAngle.ExpandablePlayer
 
             if (Physics.SphereCast(center, this.GeneralSettings.Radius, Vector3.up, out var hit, maxDistance + 0.05f))
             {
+                // Apply equal and opposite force to stop us from "staying in the ceiling."
+                // This is a common workaround for the bug using CharacterControllers.
                 this.Velocity -= hit.normal * Vector3.Dot(this.Velocity, hit.normal);
                 this.canHitCeiling = false;
             }
         }
 
+        /// <summary>
+        /// This is a code block stolen directly from the Source SDK 2013.
+        /// You can find the code block on Github here:
+        /// https://github.com/ValveSoftware/source-sdk-2013/blob/0d8dceea4310fde5706b3ce1c70609d72a38efdf/sp/src/game/shared/gamemovement.cpp#L1707-L1748
+        /// </summary>
         protected virtual void AirAccelerate(float speed, float accel)
         {
             var direction = this.GlobalToLocalSpace(this.InputVectorToDirection(this.moveInput.normalized));
@@ -502,24 +627,17 @@ namespace CriticalAngle.ExpandablePlayer
 
             var wishSpeed = magnitude;
 
-            // Cap speed
             if (wishSpeed > speed)
                 wishSpeed = speed;
 
-            // Determine veer amount
             var currentSpeed = Vector3.Dot(this.Velocity, direction);
 
-            // See how much to add
             var addSpeed = wishSpeed - currentSpeed;
-
-            // If not adding any, done.
             if (addSpeed <= 0)
                 return;
 
-            // Determine acceleration speed after acceleration
             var accelerationSpeed = accel * magnitude * Time.deltaTime;
 
-            // Cap it
             if (accelerationSpeed > addSpeed)
                 accelerationSpeed = addSpeed;
 
@@ -551,8 +669,13 @@ namespace CriticalAngle.ExpandablePlayer
             this.Velocity += acceleration;
         }
 
+        /// <summary>
+        /// Allows to stay on the ground when running down slopes.
+        /// </summary>
         protected virtual void SnapToGround()
         {
+            // Makes sure not to snap to the ground if we are either
+            // grounded or moving upwards.
             if (!this.IsGrounded || this.trueVelocity.y > 0.0f)
             {
                 this.snapAmount = 0.0m;
@@ -561,6 +684,9 @@ namespace CriticalAngle.ExpandablePlayer
 
             var center = this.transform.position + this.References.CharacterController.center;
 
+            // This block of code does a `SphereCast` downwards.
+            // From there, we calculate where our player *should* be, and then we set our `snapAmount`
+            // to make sure that we do snap to that point.
             if (Physics.SphereCast(center, this.GeneralSettings.FeetRadius, Vector3.down, out var hit,
                     this.References.CharacterController.height / 2.0f + this.GeneralSettings.StepOffset,
                     this.GeneralSettings.GroundMask))
