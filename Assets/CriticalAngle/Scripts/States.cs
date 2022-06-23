@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections;
+using UnityEditor.TextCore.Text;
 using UnityEngine;
 
 namespace CriticalAngle.ExpandablePlayer
@@ -109,6 +110,15 @@ namespace CriticalAngle.ExpandablePlayer
             }
             else return true;
         }
+
+        private bool CanUnCrouchAir()
+        {
+            var difference = this.MovementSettings.StandingColliderHeight -
+                             this.MovementSettings.CrouchedColliderHeight - this.GeneralSettings.Radius;
+
+            return !Physics.SphereCast(this.transform.position - difference.V3Y(), this.GeneralSettings.Radius,
+                Vector3.down, out var hit, this.MovementSettings.StandingColliderHeight / 2.0f);
+        }
         
         protected class IdleState : PlayerState
         {
@@ -187,6 +197,14 @@ namespace CriticalAngle.ExpandablePlayer
                 return "Air";
             }
 
+            public override void OnStateEnter()
+            {
+                this.Player.References.Camera.transform.localPosition =
+                    this.Player.MovementSettings.StandingCameraHeight.V3Y();
+                this.Player.References.CharacterController.center = Vector3.zero;
+                this.Player.References.CharacterController.height = this.Player.MovementSettings.StandingColliderHeight;
+            }
+
             public override void Update()
             {
                 this.Player.snapAmount = 0.0m;
@@ -247,6 +265,24 @@ namespace CriticalAngle.ExpandablePlayer
                 return "Air Crouch";
             }
 
+            public override void OnStateEnter()
+            {
+                var beginColliderHeight = this.Player.MovementSettings.StandingColliderHeight;
+                var endColliderHeight = this.Player.MovementSettings.CrouchedColliderHeight;
+
+                var center = (beginColliderHeight - endColliderHeight) / 2.0f;
+
+                this.Player.References.CharacterController.center = center.V3Y();
+                this.Player.References.CharacterController.height = endColliderHeight;
+
+                var cam = this.Player.References.Camera.transform;
+                var oldPos = cam.localPosition.y;
+                cam.localPosition = this.Player.MovementSettings.StandingCameraHeight.V3Y();
+                
+                // ReSharper disable once Unity.InefficientPropertyAccess
+                this.Player.transform.Translate((oldPos - cam.localPosition.y).V3Y());
+            }
+
             public override void Update()
             {
                 switch (this.Player.MovementSettings.AirStrafe)
@@ -260,6 +296,38 @@ namespace CriticalAngle.ExpandablePlayer
                             this.Player.MovementSettings.AirAcceleration);
                         break;
                 }
+                
+                this.Player.UpdateStateParameter("Can Uncrouch Air", this.Player.CanUnCrouchAir());
+            }
+        }
+
+        protected class AirCrouchToCrouchState : PlayerState
+        {
+            public AirCrouchToCrouchState(Player player) : base(player)
+            {
+            }
+
+            public override string GetStateName()
+            {
+                return "Air Crouch To Crouch";
+            }
+
+            public override void OnStateEnter()
+            {
+                var beginColliderHeight = this.Player.MovementSettings.StandingColliderHeight;
+                var endColliderHeight = this.Player.MovementSettings.CrouchedColliderHeight;
+
+                var center = (endColliderHeight - beginColliderHeight) / 2.0f;
+
+                this.Player.References.CharacterController.center = center.V3Y();
+                this.Player.References.CharacterController.height = endColliderHeight;
+
+                var cam = this.Player.References.Camera.transform;
+                var oldPos = cam.localPosition.y;
+                cam.localPosition = this.Player.MovementSettings.CrouchedCameraHeight.V3Y();
+                
+                // ReSharper disable once Unity.InefficientPropertyAccess
+                this.Player.transform.Translate((oldPos - cam.localPosition.y).V3Y());
             }
         }
         

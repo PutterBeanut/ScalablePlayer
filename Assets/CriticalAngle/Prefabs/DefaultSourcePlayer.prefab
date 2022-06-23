@@ -86,6 +86,7 @@ GameObject:
   - component: {fileID: 4344750640452850034}
   - component: {fileID: 4344750640452850035}
   - component: {fileID: 4344750640452850044}
+  - component: {fileID: 614244790}
   m_Layer: 0
   m_Name: DefaultSourcePlayer
   m_TagString: Untagged
@@ -193,6 +194,8 @@ MonoBehaviour:
     Value: 0
   - Name: Can Uncrouch
     Value: 0
+  - Name: Can Uncrouch Air
+    Value: 0
   States:
   - Name: Idle
     Transitions:
@@ -292,8 +295,22 @@ MonoBehaviour:
       Conditions:
       - Name: 0
         Value: 0
+    - ToState: 5
+      Conditions:
+      - Name: 3
+        Value: 0
   - Name: Air Crouch
-    Transitions: []
+    Transitions:
+    - ToState: 4
+      Conditions:
+      - Name: 3
+        Value: 1
+      - Name: 11
+        Value: 0
+    - ToState: 9
+      Conditions:
+      - Name: 0
+        Value: 0
   - Name: Crouch
     Transitions:
     - ToState: 0
@@ -308,6 +325,10 @@ MonoBehaviour:
         Value: 1
       - Name: 9
         Value: 1
+    - ToState: 5
+      Conditions:
+      - Name: 0
+        Value: 1
   - Name: To Crouch
     Transitions:
     - ToState: 0
@@ -316,11 +337,16 @@ MonoBehaviour:
         Value: 0
   - Name: From Crouch
     Transitions:
-    - ToState: 5
+    - ToState: 6
       Conditions:
       - Name: 8
         Value: 0
-  InputActions: {fileID: -944628639613478452, guid: e8f6e7aad3d4f9f44b479039ac3ed1d1, type: 3}
+  - Name: Air Crouch To Crouch
+    Transitions:
+    - ToState: 6
+      Conditions: []
+  InputActions: {fileID: -944628639613478452, guid: e8f6e7aad3d4f9f44b479039ac3ed1d1,
+    type: 3}
   InputMapping: 0
   MoveBinding: 0
   RunBinding: 4
@@ -345,3 +371,15 @@ CharacterController:
   m_SkinWidth: 0.001
   m_MinMoveDistance: 0
   m_Center: {x: 0, y: 0, z: 0}
+--- !u!114 &614244790
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4344750640452850047}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9036aaa14c1be3546ab76c7fc9c897de, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 

@@ -458,11 +458,14 @@ namespace CriticalAngle.ExpandablePlayer
             var center = this.transform.position + this.References.CharacterController.center;
             var maxDistance = this.References.CharacterController.height / 2.0f - this.GeneralSettings.Radius;
 
-            if (!Physics.SphereCast(center, this.GeneralSettings.Radius,
-                    Vector3.down, out var hit, maxDistance + 0.05f))
+            if (!Physics.SphereCast(center, this.GeneralSettings.Radius, Vector3.down, out var hit,
+                    maxDistance + 0.05f))
             {
                 this.IsGrounded = false;
                 return;
+            }
+            else
+            {
             }
 
             if (Physics.Raycast(hit.point + 0.01f.V3Y(), Vector3.down, out var groundHit))
