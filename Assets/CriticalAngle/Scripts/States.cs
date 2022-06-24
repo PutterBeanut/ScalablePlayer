@@ -1,6 +1,4 @@
-﻿using System;
-using System.Collections;
-using UnityEditor.TextCore.Text;
+﻿using System.Collections;
 using UnityEngine;
 
 namespace CriticalAngle.ExpandablePlayer
@@ -279,8 +277,11 @@ namespace CriticalAngle.ExpandablePlayer
                 var oldPos = cam.localPosition.y;
                 cam.localPosition = this.Player.MovementSettings.StandingCameraHeight.V3Y();
                 
+                this.Player.References.CharacterController.enabled = false;
+                
                 // ReSharper disable once Unity.InefficientPropertyAccess
                 this.Player.transform.Translate((oldPos - cam.localPosition.y).V3Y());
+                this.Player.References.CharacterController.enabled = true;
             }
 
             public override void Update()

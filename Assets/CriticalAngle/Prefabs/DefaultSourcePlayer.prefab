@@ -142,15 +142,12 @@ MonoBehaviour:
     MaxLookAngle: 90
   MovementSettings:
     Walking:
-      Enabled: 1
       MaxSpeed: 10
       Acceleration: 0.2
     Running:
-      Enabled: 1
       MaxSpeed: 20
       Acceleration: 0.2
     Crouching:
-      Enabled: 1
       MaxSpeed: 3
       Acceleration: 0.2
     TimeToCrouch: 0.15
@@ -158,17 +155,12 @@ MonoBehaviour:
     CrouchedCameraHeight: 0.25
     StandingColliderHeight: 2
     CrouchedColliderHeight: 1.5
-    CanJumpWhileCrouched: 0
-    CanJumpWhileTransitioningCrouch: 1
-    ToggleCrouch: 0
-    CanJump: 1
+    CanJumpWhileCrouched: 1
     JumpForce: 1
+    InputJumpSettings: 1
     AirStrafe: 2
-    CanCrouchWhileFalling: 1
     MaxAirAcceleration: 1
     AirAcceleration: 10
-  PhysicsSettings:
-    CanPushPhysicsObjects: 1
   Velocity: {x: 0, y: 0, z: 0}
   DisableGravity: 0
   Parameters:
@@ -196,6 +188,8 @@ MonoBehaviour:
     Value: 0
   - Name: Can Uncrouch Air
     Value: 0
+  - Name: Can Jump While Crouched
+    Value: 0
   States:
   - Name: Idle
     Transitions:
@@ -206,6 +200,8 @@ MonoBehaviour:
     - ToState: 3
       Conditions:
       - Name: 4
+        Value: 0
+      - Name: 5
         Value: 0
     - ToState: 2
       Conditions:
@@ -237,6 +233,8 @@ MonoBehaviour:
       Conditions:
       - Name: 4
         Value: 0
+      - Name: 5
+        Value: 0
     - ToState: 2
       Conditions:
       - Name: 2
@@ -265,6 +263,8 @@ MonoBehaviour:
       Conditions:
       - Name: 4
         Value: 0
+      - Name: 5
+        Value: 0
     - ToState: 1
       Conditions:
       - Name: 1
@@ -287,6 +287,10 @@ MonoBehaviour:
         Value: 1
   - Name: Jump
     Transitions:
+    - ToState: 5
+      Conditions:
+      - Name: 3
+        Value: 0
     - ToState: 4
       Conditions: []
   - Name: Air
@@ -329,6 +333,12 @@ MonoBehaviour:
       Conditions:
       - Name: 0
         Value: 1
+    - ToState: 3
+      Conditions:
+      - Name: 5
+        Value: 0
+      - Name: 12
+        Value: 0
   - Name: To Crouch
     Transitions:
     - ToState: 0

@@ -14,7 +14,6 @@ namespace CriticalAngle.ExpandablePlayer
         [SerializeField] protected PlayerReferences References;
         [SerializeField] protected PlayerGeneralSettings GeneralSettings;
         [SerializeField] protected PlayerMovementSettings MovementSettings;
-        [SerializeField] protected PlayerPhysicsSettings PhysicsSettings;
 
         #endregion
 
@@ -51,6 +50,8 @@ namespace CriticalAngle.ExpandablePlayer
         protected int activeState;
         
         protected float xRotation;
+        protected bool canJump;
+        protected bool pressedJumpInputLastFrame;
         
         protected decimal snapAmount;
         protected Vector3 groundNormal;
@@ -404,16 +405,23 @@ namespace CriticalAngle.ExpandablePlayer
         }
 
         /// <summary>
-        /// A central hub to update some of the default parameters.
+        /// A central hub to update some of the default parameters and variables that they use.
         /// </summary>
         private void UpdateStateParameters()
         {
+            if (this.MovementSettings.InputJumpSettings == PlayerMovementSettings.JumpSettings.Hold)
+                this.canJump = true;
+            else
+                this.canJump = this.jumpInput && !this.pressedJumpInputLastFrame;
+            this.pressedJumpInputLastFrame = this.jumpInput;
+
+            this.UpdateStateParameter("Can Jump While Crouched", this.MovementSettings.CanJumpWhileCrouched);
             this.UpdateStateParameter("Is Grounded", this.IsGrounded);
             this.UpdateStateParameter("Is Moving", this.moveInput.sqrMagnitude > 0.0f);
             this.UpdateStateParameter("Run Input", this.runInput);
             this.UpdateStateParameter("Crouch Input", this.crouchInput);
             this.UpdateStateParameter("Jump Input", this.jumpInput);
-            this.UpdateStateParameter("Can Jump", this.IsGrounded && this.Velocity.y <= 0.0f);
+            this.UpdateStateParameter("Can Jump", this.canJump);
             this.CheckStateConditions();
         }
         
@@ -846,6 +854,21 @@ namespace CriticalAngle.ExpandablePlayer
                 Acceleration
             }
 
+            /// <summary>
+            /// The way that our player interprets the jump input.
+            /// </summary>
+            public enum JumpSettings
+            {
+                /// <summary>
+                /// Allows us to hold our jump input and then jump whenever given the chance.
+                /// </summary>
+                Hold,
+                /// <summary>
+                /// Pressing our jump input will not allow us to jump until we have pressed it again. 
+                /// </summary>
+                Press,
+            }
+
             [Header("Movement Parameters")] [Tooltip("Settings for when the player is in the Walk state.")]
             public MovementParameters Walking;
 
@@ -876,27 +899,17 @@ namespace CriticalAngle.ExpandablePlayer
             [Space] [Tooltip("Should we be able to jump in the air when we are fully crouched?")]
             public bool CanJumpWhileCrouched;
 
-            [Tooltip("Should we be able to jump while transitioning form standing to crouched?")]
-            public bool CanJumpWhileTransitioningCrouch;
-
-            [Tooltip("Should we have to hold the crouch key to stay crouched or press it to toggle it?")]
-            public bool ToggleCrouch;
-
-            [Space] [Header("Jumping")] [Tooltip("Are we allowed to jump?")]
-            public bool CanJump;
-
             [Tooltip("The upward force added when the jump key is pressed.")]
             public float JumpForce;
+
+            [Tooltip("The way that our player interprets the jump input.")]
+            public JumpSettings InputJumpSettings;
 
             [Space]
             [Header("Falling")]
             [Tooltip(
                 "Are we allowed to strafe in air? This will override the `AirControl` property with air strafing code.")]
             public AirStrafeType AirStrafe;
-
-            [Tooltip(
-                "Should we be able to crouch in air? This will cause the the feet to be raised as opposed to the head being lowered.")]
-            public bool CanCrouchWhileFalling;
 
             [Space] [Tooltip("What is the maximum speed we should be able to travel while air strafing?")]
             public float MaxAirAcceleration;
@@ -906,37 +919,20 @@ namespace CriticalAngle.ExpandablePlayer
 
             public PlayerMovementSettings()
             {
-                this.Walking = new MovementParameters(true, 4.0f, 10.0f);
-                this.Running = new MovementParameters(false, 6.0f, 10.0f);
-                this.Crouching = new MovementParameters(true, 1.5f, 10.0f);
+                this.Walking = new MovementParameters(4.0f, 10.0f);
+                this.Running = new MovementParameters(6.0f, 10.0f);
+                this.Crouching = new MovementParameters(1.5f, 10.0f);
                 this.TimeToCrouch = 0.25f;
                 this.StandingCameraHeight = 0.75f;
                 this.CrouchedCameraHeight = 0.25f;
                 this.StandingColliderHeight = 2.0f;
                 this.CrouchedColliderHeight = 1.5f;
                 this.CanJumpWhileCrouched = false;
-                this.CanJumpWhileTransitioningCrouch = true;
-                this.CanJump = true;
                 this.JumpForce = 4.0f;
+                this.InputJumpSettings = JumpSettings.Press;
                 this.AirStrafe = AirStrafeType.Acceleration;
-                this.CanCrouchWhileFalling = true;
                 this.MaxAirAcceleration = 1.0f;
                 this.AirAcceleration = 10.0f;
-            }
-        }
-
-        /// <summary>
-        /// Settings to control how the player collides and interacts with other physics objects.
-        /// </summary>
-        [Serializable]
-        public class PlayerPhysicsSettings
-        {
-            [Tooltip("Should we be able to push and interact with other physics objects?")]
-            public bool CanPushPhysicsObjects;
-
-            public PlayerPhysicsSettings()
-            {
-                this.CanPushPhysicsObjects = true;
             }
         }
 
@@ -946,18 +942,14 @@ namespace CriticalAngle.ExpandablePlayer
         [Serializable]
         public class MovementParameters
         {
-            [Tooltip("Should we be able to perform this movement action?")]
-            public bool Enabled;
-
             [Space] [Tooltip("The max speed that we desire the player to travel.")]
             public float MaxSpeed;
 
             [Tooltip("How fast we should accelerate to the desired speed.")] [Range(0.0f, 1.0f)]
             public float Acceleration;
 
-            public MovementParameters(bool enabled, float maxSpeed, float acceleration)
+            public MovementParameters(float maxSpeed, float acceleration)
             {
-                this.Enabled = enabled;
                 this.MaxSpeed = maxSpeed;
                 this.Acceleration = acceleration;
             }
